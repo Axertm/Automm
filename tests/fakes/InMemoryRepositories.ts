@@ -1,0 +1,119 @@
+import type { Deal } from '../../src/domain/entities/Deal.js';
+import type { Wallet } from '../../src/domain/entities/Wallet.js';
+import type { Transaction, TransactionDirection } from '../../src/domain/entities/Transaction.js';
+import type { AuditEntry } from '../../src/domain/entities/AuditEntry.js';
+import type { Party } from '../../src/domain/entities/Party.js';
+import type { IDealRepository } from '../../src/domain/repositories/IDealRepository.js';
+import type { IWalletRepository } from '../../src/domain/repositories/IWalletRepository.js';
+import type { ITransactionRepository } from '../../src/domain/repositories/ITransactionRepository.js';
+import type { IAuditLogRepository } from '../../src/domain/repositories/IAuditLogRepository.js';
+import type { IPartyRepository } from '../../src/domain/repositories/IPartyRepository.js';
+import type { DealId, TransactionId, TxId, WalletId } from '../../src/domain/value-objects/EntityId.js';
+import { DEAL_STATES, type DealState } from '../../src/domain/state-machine/DealState.js';
+
+export class InMemoryDealRepository implements IDealRepository {
+  private readonly deals = new Map<string, Deal>();
+
+  async save(deal: Deal): Promise<void> {
+    this.deals.set(deal.id, deal);
+  }
+
+  async findById(id: DealId): Promise<Deal | null> {
+    return this.deals.get(id) ?? null;
+  }
+
+  async findByTicketChannelId(channelId: string): Promise<Deal | null> {
+    for (const deal of this.deals.values()) {
+      if (deal.toProps().ticketChannelId === channelId) return deal;
+    }
+    return null;
+  }
+
+  async findByStates(states: readonly DealState[]): Promise<Deal[]> {
+    return [...this.deals.values()].filter((deal) => states.includes(deal.state));
+  }
+
+  async countByState(guildId: string): Promise<Record<DealState, number>> {
+    const result = Object.fromEntries(DEAL_STATES.map((state) => [state, 0])) as Record<DealState, number>;
+    for (const deal of this.deals.values()) {
+      if (deal.toProps().guildId === guildId) {
+        result[deal.state] += 1;
+      }
+    }
+    return result;
+  }
+}
+
+export class InMemoryWalletRepository implements IWalletRepository {
+  private readonly wallets = new Map<string, Wallet>();
+
+  async save(wallet: Wallet): Promise<void> {
+    this.wallets.set(wallet.id, wallet);
+  }
+
+  async findById(id: WalletId): Promise<Wallet | null> {
+    return this.wallets.get(id) ?? null;
+  }
+
+  async findByDealId(dealId: DealId): Promise<Wallet | null> {
+    for (const wallet of this.wallets.values()) {
+      if (wallet.dealId === dealId) return wallet;
+    }
+    return null;
+  }
+}
+
+export class InMemoryTransactionRepository implements ITransactionRepository {
+  private readonly transactions = new Map<string, Transaction>();
+
+  async save(transaction: Transaction): Promise<void> {
+    this.transactions.set(transaction.id, transaction);
+  }
+
+  async findById(id: TransactionId): Promise<Transaction | null> {
+    return this.transactions.get(id) ?? null;
+  }
+
+  async findByDealId(dealId: DealId): Promise<Transaction[]> {
+    return [...this.transactions.values()].filter((tx) => tx.dealId === dealId);
+  }
+
+  async findByDealAndTxid(
+    dealId: DealId,
+    txid: TxId,
+    direction: TransactionDirection,
+  ): Promise<Transaction | null> {
+    for (const tx of this.transactions.values()) {
+      if (tx.dealId === dealId && tx.txid === txid && tx.direction === direction) return tx;
+    }
+    return null;
+  }
+}
+
+export class InMemoryAuditLogRepository implements IAuditLogRepository {
+  private readonly entries: AuditEntry[] = [];
+
+  async append(entry: AuditEntry): Promise<void> {
+    this.entries.push(entry);
+  }
+
+  async findByDealId(dealId: DealId): Promise<AuditEntry[]> {
+    return this.entries.filter((entry) => entry.toProps().dealId === dealId);
+  }
+
+  all(): readonly AuditEntry[] {
+    return this.entries;
+  }
+}
+
+export class InMemoryPartyRepository implements IPartyRepository {
+  private readonly parties = new Map<string, Party>();
+
+  async save(party: Party): Promise<void> {
+    this.parties.set(party.id, party);
+  }
+
+  async findByDealId(dealId: DealId): Promise<Party[]> {
+    return [...this.parties.values()].filter((party) => party.dealId === dealId);
+  }
+}
