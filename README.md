@@ -4,6 +4,36 @@ A production-ready Discord bot that runs peer-to-peer escrow deals for **Litecoi
 
 > **⚠️ This bot is configured for Litecoin/Solana mainnet by default and custodies real private keys.** It has been built with security as a priority (two-party confirmation gates, defense-in-depth authorization, audit trail) but **has not undergone an independent professional security audit**. Get one before pointing it at real funds at any meaningful scale. Start with small amounts and a small trusted community while you build confidence in the deployment.
 
+## Prerequisites
+
+Gather these before running the bot:
+
+**1. Software**
+- Node.js 22+
+- Git
+
+**2. A Discord bot application**
+- Create one at https://discord.com/developers/applications
+- Add a bot to it → copy the bot token (`DISCORD_TOKEN`)
+- Copy the Application ID (`DISCORD_CLIENT_ID`)
+- Enable the bot's Guilds and Guild Members intents
+- Invite the bot to your server with permission to manage channels, roles, and send messages
+- Copy your server's ID (`DISCORD_GUILD_ID`) — enable Developer Mode, then right-click the server icon → Copy Server ID
+
+**3. Two crypto wallets you control**
+- An LTC address to receive escrow fees (`LTC_FEE_WALLET_ADDRESS`)
+- A SOL address to receive escrow fees (`SOL_FEE_WALLET_ADDRESS`)
+- The bot only ever pays *into* these — it never signs from them
+
+**4. Free API accounts** (both take under a minute, no approval wait)
+- BlockCypher token: https://www.blockcypher.com/dev/ (`BLOCKCYPHER_API_TOKEN`) — technically optional, but the anonymous tier rate-limits fast; get one before relying on the bot for real deals
+- Blockchair API key: https://blockchair.com/api/docs (`BLOCKCHAIR_API_KEY`) — this is the LTC failover provider, so both providers being authenticated matters
+- Solana works against the public RPC out of the box; a fallback RPC (e.g. Helius's free tier) is optional but recommended
+
+**5. A database**
+- Nothing to set up for local testing — SQLite is provisioned automatically by `npm run dev`
+- For a real deployment, use PostgreSQL (`DATABASE_URL`) — SQLite is dev/CI convenience only, see "Database" below
+
 ## Quick start
 
 ```bash
