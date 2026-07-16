@@ -9,6 +9,7 @@ import {
 import type { SlashCommandDefinition } from '../interaction-router/HandlerRegistry.js';
 import { requireAdmin } from '../commands/admin/adminAuth.js';
 import { encodeCustomId } from '../interaction-router/CustomId.js';
+import { buildSimpleEmbed } from '../embeds/SimpleEmbed.js';
 
 export const escrowPanelCommand: SlashCommandDefinition = {
   data: new SlashCommandBuilder()
@@ -36,6 +37,6 @@ export const escrowPanelCommand: SlashCommandDefinition = {
     if (interaction.channel?.isSendable()) {
       await interaction.channel.send({ embeds: [embed], components: [row] });
     }
-    await interaction.reply({ content: 'Panel posted.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ embeds: [buildSimpleEmbed('Panel posted.', 'success')], flags: MessageFlags.Ephemeral });
   },
 };

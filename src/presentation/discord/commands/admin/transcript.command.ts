@@ -2,6 +2,7 @@ import { AttachmentBuilder, ChannelType, MessageFlags, SlashCommandBuilder } fro
 import type { SlashCommandDefinition } from '../../interaction-router/HandlerRegistry.js';
 import { requireAdmin } from './adminAuth.js';
 import { resolveDealOrWizardSession } from '../resolveDealById.js';
+import { buildSimpleEmbed } from '../../embeds/SimpleEmbed.js';
 
 const MAX_MESSAGES = 500;
 const PAGE_SIZE = 100;
@@ -25,7 +26,9 @@ export const transcriptCommand: SlashCommandDefinition = {
 
     const channel = await interaction.client.channels.fetch(ticketChannelId).catch(() => null);
     if (!channel || channel.type !== ChannelType.GuildText) {
-      await interaction.editReply('The ticket channel for this deal no longer exists.');
+      await interaction.editReply({
+        embeds: [buildSimpleEmbed('The ticket channel for this deal no longer exists.', 'error')],
+      });
       return;
     }
 
@@ -57,7 +60,7 @@ export const transcriptCommand: SlashCommandDefinition = {
     const buffer = Buffer.from(lines.join('\n'), 'utf-8');
     const attachment = new AttachmentBuilder(buffer, { name: `transcript-${dealId}.txt` });
     await interaction.editReply({
-      content: `Transcript (${allMessages.length} messages):`,
+      embeds: [buildSimpleEmbed(`Transcript (${allMessages.length} messages):`)],
       files: [attachment],
     });
   },

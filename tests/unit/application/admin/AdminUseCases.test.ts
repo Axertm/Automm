@@ -6,6 +6,8 @@ import { AdminRefundUseCase } from '../../../../src/application/use-cases/admin/
 import { AdminOverridePayoutAddressUseCase } from '../../../../src/application/use-cases/admin/AdminOverridePayoutAddressUseCase.js';
 import { AdminStatsUseCase } from '../../../../src/application/use-cases/admin/AdminStatsUseCase.js';
 import { AuditRecorder } from '../../../../src/application/services/AuditRecorder.js';
+import { PayoutTrigger } from '../../../../src/application/services/PayoutTrigger.js';
+import { ExecutePayoutUseCase } from '../../../../src/application/use-cases/release/ExecutePayoutUseCase.js';
 import {
   InMemoryDealRepository,
   InMemoryWalletRepository,
@@ -21,6 +23,7 @@ import { Wallet } from '../../../../src/domain/entities/Wallet.js';
 import { Money } from '../../../../src/domain/value-objects/Money.js';
 import { asTransactionId, asTxId, asWalletId } from '../../../../src/domain/value-objects/EntityId.js';
 import type { IBlockchainServiceFactory } from '../../../../src/application/ports/IBlockchainServiceFactory.js';
+import type { IFeeWalletProvider } from '../../../../src/application/ports/IFeeWalletProvider.js';
 import type { Currency } from '../../../../src/domain/value-objects/Currency.js';
 import type { IBlockchainService } from '../../../../src/application/ports/IBlockchainService.js';
 
@@ -30,6 +33,12 @@ class SingleCurrencyFactory implements IBlockchainServiceFactory {
   constructor(private readonly service: FakeBlockchainService) {}
   getService(_currency: Currency): IBlockchainService {
     return this.service;
+  }
+}
+
+class StubFeeWalletProvider implements IFeeWalletProvider {
+  getFeeWalletAddress(): string {
+    return 'fake-ltc-fee-wallet-address';
   }
 }
 
@@ -43,6 +52,17 @@ function harness() {
   const notifier = new FakeDiscordNotifier();
   const blockchainService = new FakeBlockchainService('LTC');
   const factory = new SingleCurrencyFactory(blockchainService);
+  const executePayout = new ExecutePayoutUseCase(
+    dealRepository,
+    walletRepository,
+    transactionRepository,
+    factory,
+    new StubFeeWalletProvider(),
+    notifier,
+    auditRecorder,
+    clock,
+  );
+  const payoutTrigger = new PayoutTrigger(dealRepository, executePayout, auditRecorder);
   return {
     dealRepository,
     walletRepository,
@@ -52,6 +72,7 @@ function harness() {
     blockchainService,
     factory,
     auditRecorder,
+    payoutTrigger,
   };
 }
 
@@ -149,7 +170,9 @@ describe('AdminRefundUseCase', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.state).toBe('REFUNDED');
     expect(h.blockchainService.sentPayouts).toHaveLength(1);
-    expect(h.blockchainService.sentPayouts[0]?.outputs[0]?.amount.toDecimalString()).toBe('1');
+    // FakeBlockchainService.estimateFee returns 0.0001 LTC — carved out of
+    // the refund output before broadcasting (see AdminRefundUseCase).
+    expect(h.blockchainService.sentPayouts[0]?.outputs[0]?.amount.toDecimalString()).toBe('0.9999');
   });
 
   it('refuses to refund an unfunded deal', async () => {
@@ -182,16 +205,28 @@ describe('AdminRefundUseCase', () => {
 });
 
 describe('AdminOverridePayoutAddressUseCase', () => {
-  it('overrides the payout address with a mandatory reason and audits it distinctly', async () => {
+  it('bypasses both seller and buyer confirmations, straight from FUNDED, and immediately triggers payout', async () => {
     const h = harness();
     const override = new AdminOverridePayoutAddressUseCase(
       h.dealRepository,
       h.factory,
       h.notifier,
       h.auditRecorder,
+      h.payoutTrigger,
     );
-    const deal = makeDeal({ state: 'RELEASE_REQUESTED' });
+    const deal = makeDeal({ state: 'FUNDED' });
     await h.dealRepository.save(deal);
+    await h.walletRepository.save(
+      Wallet.create({
+        id: asWalletId('wallet-override'),
+        dealId: deal.id,
+        currency: 'LTC',
+        address: 'fake-ltc-deposit',
+        encryptedPrivateKey: { iv: 'iv', authTag: 'tag', ciphertext: 'cipher', keyVersion: 1 },
+        derivationPath: null,
+        createdAt: new Date(),
+      }),
+    );
 
     const result = await override.execute(
       deal.id,
@@ -201,9 +236,11 @@ describe('AdminOverridePayoutAddressUseCase', () => {
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.state).toBe('AWAITING_PAYOUT_CONFIRMATION');
+      expect(result.value.state).toBe('PAYOUT_IN_PROGRESS');
       expect(result.value.payoutAddressConfirmedBySeller).toBe(true);
+      expect(result.value.buyerReleaseConfirmed).toBe(true);
     }
+    expect(h.blockchainService.sentPayouts).toHaveLength(1);
 
     const entries = await h.auditLogRepository.findByDealId(deal.id);
     expect(entries.some((e) => e.toProps().action === 'ADMIN_OVERRIDE_PAYOUT_ADDRESS')).toBe(true);
@@ -217,11 +254,28 @@ describe('AdminOverridePayoutAddressUseCase', () => {
       h.factory,
       h.notifier,
       h.auditRecorder,
+      h.payoutTrigger,
     );
-    const deal = makeDeal({ state: 'RELEASE_REQUESTED' });
+    const deal = makeDeal({ state: 'FUNDED' });
     await h.dealRepository.save(deal);
 
     const result = await override.execute(deal.id, ADMIN, 'garbage', 'reason');
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects override before any funds have arrived', async () => {
+    const h = harness();
+    const override = new AdminOverridePayoutAddressUseCase(
+      h.dealRepository,
+      h.factory,
+      h.notifier,
+      h.auditRecorder,
+      h.payoutTrigger,
+    );
+    const deal = makeDeal({ state: 'AWAITING_DEPOSIT' });
+    await h.dealRepository.save(deal);
+
+    const result = await override.execute(deal.id, ADMIN, 'fake-ltc-override-address', 'reason');
     expect(result.ok).toBe(false);
   });
 });

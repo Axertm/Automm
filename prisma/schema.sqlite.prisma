@@ -1,6 +1,5 @@
 // ============================================================================
-// AUTO-GENERATED from schema.prisma by scripts/generate-sqlite-schema.mjs.
-// Do not edit by hand — edit schema.prisma instead and re-run `npm run dev`.
+// Canonical Prisma schema — source of truth, targets PostgreSQL (production).
 //
 // SQLite/Postgres parity note: every enum-like column is a plain `String`
 // (Prisma native `enum` is unsupported on SQLite), validated by Zod/domain

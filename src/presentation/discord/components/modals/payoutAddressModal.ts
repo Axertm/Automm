@@ -2,6 +2,7 @@ import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, Messa
 import { encodeCustomId } from '../../interaction-router/CustomId.js';
 import type { ModalHandler } from '../../interaction-router/HandlerRegistry.js';
 import { asDealId } from '../../../../domain/value-objects/EntityId.js';
+import { buildSimpleEmbed } from '../../embeds/SimpleEmbed.js';
 
 const ADDRESS_INPUT_ID = 'address';
 
@@ -30,13 +31,18 @@ export const handlePayoutAddressModalSubmit: ModalHandler = async (interaction, 
 
   if (!result.ok) {
     await interaction.reply({
-      content: `Could not submit payout address: ${result.error.message}`,
+      embeds: [buildSimpleEmbed(`Could not submit payout address: ${result.error.message}`, 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   await interaction.reply({
-    content: `Payout address recorded: \`${address}\`. Please review it in the status message and confirm.`,
+    embeds: [
+      buildSimpleEmbed(
+        `Payout address recorded: \`${address}\`. Please review it in the status message and confirm.`,
+        'success',
+      ),
+    ],
     flags: MessageFlags.Ephemeral,
   });
 };

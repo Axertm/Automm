@@ -1,50 +1,50 @@
 import type { DealId } from '../../../domain/value-objects/EntityId.js';
 import { DealNotFoundError } from '../../../domain/errors/DomainErrors.js';
 import type { IDealRepository } from '../../../domain/repositories/IDealRepository.js';
+import type { IDiscordNotifier } from '../../ports/IDiscordNotifier.js';
 import { AuditRecorder } from '../../services/AuditRecorder.js';
 import { err, ok, type Result } from '../../../shared/result/Result.js';
 import type { Deal } from '../../../domain/entities/Deal.js';
 import type { DomainError } from '../../../domain/errors/DomainErrors.js';
-import type { ExecutePayoutUseCase } from './ExecutePayoutUseCase.js';
 
 /**
- * The buyer's final, independent confirmation. Both confirmation flags are
- * required before startPayout() will succeed — enforced inside the Deal
- * entity itself, not just here — so this is the only place payout actually
- * begins executing.
+ * The buyer's own, independent confirmation that funds should be released —
+ * given BEFORE the seller is allowed to submit a payout address (enforced
+ * inside Deal.submitPayoutAddress, which requires
+ * state === AWAITING_PAYOUT_CONFIRMATION, only reachable via this method).
+ * No funds move here: this just opens the gate for the seller's side. The
+ * actual payout is triggered later, once the seller confirms their address
+ * — see PayoutTrigger, used by ConfirmPayoutWalletUseCase and
+ * AdminOverridePayoutAddressUseCase.
  */
 export class ConfirmReleaseUseCase {
   constructor(
     private readonly dealRepository: IDealRepository,
-    private readonly executePayoutUseCase: ExecutePayoutUseCase,
+    private readonly discordNotifier: IDiscordNotifier,
     private readonly auditRecorder: AuditRecorder,
   ) {}
 
-  async execute(dealId: DealId, buyerDiscordId: string): Promise<Result<Deal, DomainError | Error>> {
+  async execute(dealId: DealId, buyerDiscordId: string): Promise<Result<Deal, DomainError>> {
     const deal = await this.dealRepository.findById(dealId);
     if (!deal) {
       return err(new DealNotFoundError(dealId));
     }
 
     try {
+      const fromState = deal.state;
       deal.confirmReleaseByBuyer(buyerDiscordId);
-      deal.startPayout();
       await this.dealRepository.save(deal);
       await this.auditRecorder.record({
         dealId,
         actorId: buyerDiscordId,
         action: 'BUYER_CONFIRMED_RELEASE',
-        fromState: 'AWAITING_PAYOUT_CONFIRMATION',
-        toState: 'PAYOUT_IN_PROGRESS',
+        fromState,
+        toState: deal.state,
       });
+      await this.discordNotifier.releaseConfirmedByBuyer(dealId);
+      return ok(deal);
     } catch (error) {
       return err(error as DomainError);
     }
-
-    const payoutResult = await this.executePayoutUseCase.execute(dealId);
-    if (!payoutResult.ok) {
-      return err(payoutResult.error);
-    }
-    return ok(payoutResult.value);
   }
 }

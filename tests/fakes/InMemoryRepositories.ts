@@ -13,9 +13,26 @@ import { DEAL_STATES, type DealState } from '../../src/domain/state-machine/Deal
 
 export class InMemoryDealRepository implements IDealRepository {
   private readonly deals = new Map<string, Deal>();
+  // findById hands back the same mutable Deal instance that's stored here
+  // (unlike a real DB read, which produces a fresh row each time), so a
+  // caller mutating a Deal in-memory before calling saveIfCurrentStateIs
+  // would otherwise see its own not-yet-persisted mutation reflected in
+  // `deals` already. Tracking the last-saved state separately keeps the CAS
+  // check honest about what's actually "persisted".
+  private readonly persistedStates = new Map<string, DealState>();
 
   async save(deal: Deal): Promise<void> {
     this.deals.set(deal.id, deal);
+    this.persistedStates.set(deal.id, deal.state);
+  }
+
+  async saveIfCurrentStateIs(deal: Deal, expectedState: DealState): Promise<boolean> {
+    if (this.persistedStates.get(deal.id) !== expectedState) {
+      return false;
+    }
+    this.deals.set(deal.id, deal);
+    this.persistedStates.set(deal.id, deal.state);
+    return true;
   }
 
   async findById(id: DealId): Promise<Deal | null> {

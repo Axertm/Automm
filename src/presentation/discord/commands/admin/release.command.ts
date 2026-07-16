@@ -21,7 +21,7 @@ export const releaseCommand: SlashCommandDefinition = {
       dealId: deal.id,
       title: 'Force release request?',
       description:
-        'This starts the release process on the buyer’s behalf. The seller must still submit and confirm a payout address, and the buyer must still give final confirmation before funds move.',
+        'This starts the release process on the buyer’s behalf. The buyer must still give a final confirmation before the seller may submit a payout address, and the seller must still confirm it before any funds move.',
       highRisk: true,
     });
   },

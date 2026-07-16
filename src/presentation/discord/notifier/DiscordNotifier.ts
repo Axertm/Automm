@@ -7,13 +7,18 @@ import type { IPartyRepository } from '../../../domain/repositories/IPartyReposi
 import type { DealId } from '../../../domain/value-objects/EntityId.js';
 import type { Env } from '../../../config/env.schema.js';
 import { buildDealStatusEmbed, buildTxidExplorerLink } from '../embeds/DealEmbedBuilder.js';
+import { buildSimpleEmbed } from '../embeds/SimpleEmbed.js';
 import { buildDealActionRow } from '../components/buttons/dealActionRow.js';
 
 /**
- * Implements IDiscordNotifier by editing the deal's pinned status message in
- * place (found via its footer "Deal ID: …" rather than a stored message id,
- * so no schema change was needed) and posting a scrolling event log for
- * individual notable events.
+ * Implements IDiscordNotifier. Most transitions edit the deal's pinned
+ * status message in place (found via its footer "Deal ID: …" rather than a
+ * stored message id, so no schema change was needed). A "full step" — one
+ * where a two-party gate just closed (both sides have now acted, not just
+ * one) — instead posts a brand-new status embed and re-pins it, so that
+ * milestone stands out as its own message in the channel history rather
+ * than silently overwriting the previous one. Every message this class
+ * sends is an embed, never a bare content string.
  */
 export class DiscordNotifier implements IDiscordNotifier {
   constructor(
@@ -33,6 +38,16 @@ export class DiscordNotifier implements IDiscordNotifier {
     return channel;
   }
 
+  private async findPinnedStatusMessage(channel: TextChannel, dealId: DealId) {
+    const pinned = await channel.messages.fetchPinned().catch(() => null);
+    return pinned?.find(
+      (message) =>
+        message.author.id === this.client.user?.id &&
+        message.embeds[0]?.footer?.text === `Deal ID: ${dealId}`,
+    );
+  }
+
+  /** Edits the pinned status message in place — used for partial/single-sided progress (only one party has acted so far). */
   private async upsertStatusEmbed(dealId: DealId): Promise<void> {
     const [deal, wallet, channel] = await Promise.all([
       this.dealRepository.findById(dealId),
@@ -44,12 +59,7 @@ export class DiscordNotifier implements IDiscordNotifier {
     const embed = buildDealStatusEmbed(deal, wallet);
     const row = buildDealActionRow(deal);
     const components = row ? [row] : [];
-    const pinned = await channel.messages.fetchPinned().catch(() => null);
-    const existing = pinned?.find(
-      (message) =>
-        message.author.id === this.client.user?.id &&
-        message.embeds[0]?.footer?.text === `Deal ID: ${dealId}`,
-    );
+    const existing = await this.findPinnedStatusMessage(channel, dealId);
 
     if (existing) {
       await existing
@@ -63,54 +73,85 @@ export class DiscordNotifier implements IDiscordNotifier {
     }
   }
 
-  async dealFunded(dealId: DealId): Promise<void> {
-    await this.upsertStatusEmbed(dealId);
+  /**
+   * Always posts a fresh status embed and pins it, unpinning whatever
+   * status message was pinned before — used when a two-party gate just
+   * closed (e.g. the seller's confirmation lands on top of the buyer's
+   * already-recorded confirmation) so that milestone gets its own visible
+   * message instead of quietly replacing the previous one.
+   */
+  private async postNewStatusEmbed(dealId: DealId): Promise<void> {
+    const [deal, wallet, channel] = await Promise.all([
+      this.dealRepository.findById(dealId),
+      this.walletRepository.findByDealId(dealId),
+      this.getTicketChannel(dealId),
+    ]);
+    if (!deal || !channel) return;
+
+    const embed = buildDealStatusEmbed(deal, wallet);
+    const row = buildDealActionRow(deal);
+    const components = row ? [row] : [];
+
+    const previous = await this.findPinnedStatusMessage(channel, dealId);
+    const sent = await channel.send({ embeds: [embed], components }).catch(() => null);
+    if (!sent) return;
+    if (previous) await previous.unpin().catch(() => undefined);
+    await sent.pin().catch(() => undefined);
+  }
+
+  private async sendEvent(dealId: DealId, description: string, tone: Parameters<typeof buildSimpleEmbed>[1] = 'info'): Promise<void> {
     const channel = await this.getTicketChannel(dealId);
-    await channel
-      ?.send('✅ Deal is fully funded and confirmed. The buyer may now `/release` when ready.')
-      .catch(() => undefined);
+    await channel?.send({ embeds: [buildSimpleEmbed(description, tone)] }).catch(() => undefined);
+  }
+
+  async dealFunded(dealId: DealId): Promise<void> {
+    // Both "sides" of funding (deposit arriving + confirmation threshold met)
+    // just closed — a real milestone, so it gets a fresh pinned message.
+    await this.postNewStatusEmbed(dealId);
+    await this.sendEvent(dealId, '✅ Deal is fully funded and confirmed. The buyer may now `/release` when ready.', 'success');
   }
 
   async depositDetected(dealId: DealId, txid: string, confirmations: number): Promise<void> {
     const deal = await this.dealRepository.findById(dealId);
-    const channel = await this.getTicketChannel(dealId);
-    if (!deal || !channel) return;
+    if (!deal) return;
     const link = buildTxidExplorerLink(deal.currency, txid);
-    await channel
-      .send(`💰 Deposit detected: ${link} (${confirmations} confirmation${confirmations === 1 ? '' : 's'})`)
-      .catch(() => undefined);
+    await this.sendEvent(
+      dealId,
+      `💰 Deposit detected: ${link} (${confirmations} confirmation${confirmations === 1 ? '' : 's'})`,
+    );
   }
 
   async releaseRequested(dealId: DealId): Promise<void> {
+    // Only the buyer/admin has acted so far — waiting on the buyer's own
+    // final confirmation next, so this edits the existing message in place.
     await this.upsertStatusEmbed(dealId);
-    const channel = await this.getTicketChannel(dealId);
-    await channel
-      ?.send('🔓 Release requested. Seller, please submit your payout address.')
-      .catch(() => undefined);
+    await this.sendEvent(dealId, '🔓 Release requested. Buyer, please give your final confirmation to proceed.');
+  }
+
+  async releaseConfirmedByBuyer(dealId: DealId): Promise<void> {
+    // Only the buyer's side of the gate is done — still waiting on the
+    // seller, so this is still a partial step (edit in place).
+    await this.upsertStatusEmbed(dealId);
+    await this.sendEvent(dealId, '✅ Buyer confirmed the release. Seller, please submit your payout address.', 'success');
   }
 
   async payoutAddressSubmitted(dealId: DealId): Promise<void> {
+    // The seller has submitted an address but not yet confirmed it — still partial.
     await this.upsertStatusEmbed(dealId);
-    const channel = await this.getTicketChannel(dealId);
-    await channel
-      ?.send('📮 Seller submitted a payout address. Please confirm it is correct.')
-      .catch(() => undefined);
+    await this.sendEvent(dealId, '📮 Seller submitted a payout address. Please review and confirm it — this is final.');
   }
 
   async payoutConfirmedBySeller(dealId: DealId): Promise<void> {
-    await this.upsertStatusEmbed(dealId);
-    const channel = await this.getTicketChannel(dealId);
-    await channel
-      ?.send(
-        '✅ Seller confirmed the payout address. Buyer, please give final confirmation to release funds.',
-      )
-      .catch(() => undefined);
+    // This is the moment BOTH sides of the release gate are now satisfied
+    // (buyer already confirmed earlier, seller's confirmation just landed)
+    // — a full step, so it gets its own fresh pinned message.
+    await this.postNewStatusEmbed(dealId);
+    await this.sendEvent(dealId, '✅ Seller confirmed the payout address. Broadcasting payout…', 'success');
   }
 
   async payoutCompleted(dealId: DealId): Promise<void> {
-    await this.upsertStatusEmbed(dealId);
-    const channel = await this.getTicketChannel(dealId);
-    await channel?.send('🎉 Payout completed. This deal is now closed.').catch(() => undefined);
+    await this.postNewStatusEmbed(dealId);
+    await this.sendEvent(dealId, '🎉 Payout completed. This deal is now closed.', 'success');
     await this.awardCompletionRoles(dealId);
   }
 

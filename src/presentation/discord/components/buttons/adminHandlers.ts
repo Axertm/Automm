@@ -6,6 +6,7 @@ import type {
 } from '../../interaction-router/HandlerRegistry.js';
 import { sendConfirmationPrompt, handleCancel } from './confirmation.js';
 import { readAddress, readReason } from '../modals/adminReasonModals.js';
+import { buildSimpleEmbed } from '../../embeds/SimpleEmbed.js';
 
 const freezeModalSubmit: ModalHandler = async (interaction, decoded, deps) => {
   const reason = readReason(interaction);
@@ -25,8 +26,9 @@ const freezeConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   const reason = payload?.reason ?? 'No reason recorded';
   const result = await deps.adminFreeze.execute(asDealId(decoded.dealId), interaction.user.id, reason);
   await interaction.update({
-    content: result.ok ? '🧊 Deal frozen.' : `❌ ${result.error.message}`,
-    embeds: [],
+    embeds: [
+      result.ok ? buildSimpleEmbed('🧊 Deal frozen.', 'warning') : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+    ],
     components: [],
   });
 };
@@ -44,8 +46,9 @@ const unfreezePrompt: ButtonHandler = async (interaction, decoded) => {
 const unfreezeConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   const result = await deps.adminUnfreeze.execute(asDealId(decoded.dealId), interaction.user.id);
   await interaction.update({
-    content: result.ok ? '✅ Deal unfrozen.' : `❌ ${result.error.message}`,
-    embeds: [],
+    embeds: [
+      result.ok ? buildSimpleEmbed('✅ Deal unfrozen.', 'success') : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+    ],
     components: [],
   });
 };
@@ -68,8 +71,9 @@ const cancelConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   const reason = payload?.reason ?? 'No reason recorded';
   const result = await deps.adminCancel.execute(asDealId(decoded.dealId), interaction.user.id, reason);
   await interaction.update({
-    content: result.ok ? '🚫 Deal cancelled.' : `❌ ${result.error.message}`,
-    embeds: [],
+    embeds: [
+      result.ok ? buildSimpleEmbed('🚫 Deal cancelled.', 'warning') : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+    ],
     components: [],
   });
 };
@@ -93,20 +97,23 @@ const refundConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   const payload = deps.pendingActionCache.take(decoded.extra ?? '');
   if (!payload) {
     await interaction.update({
-      content: '❌ This confirmation has expired. Please run the command again.',
-      embeds: [],
+      embeds: [buildSimpleEmbed('❌ This confirmation has expired. Please run the command again.', 'error')],
       components: [],
     });
     return;
   }
-  await interaction.update({ content: '⏳ Broadcasting refund…', embeds: [], components: [] });
+  await interaction.update({ embeds: [buildSimpleEmbed('⏳ Broadcasting refund…')], components: [] });
   const result = await deps.adminRefund.execute(
     asDealId(decoded.dealId),
     interaction.user.id,
     payload.reason ?? '',
     payload.address ?? '',
   );
-  await interaction.editReply({ content: result.ok ? '✅ Refund broadcast.' : `❌ ${result.error.message}` });
+  await interaction.editReply({
+    embeds: [
+      result.ok ? buildSimpleEmbed('✅ Refund broadcast.', 'success') : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+    ],
+  });
 };
 
 const overrideModalSubmit: ModalHandler = async (interaction, decoded, deps) => {
@@ -128,8 +135,7 @@ const overrideConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   const payload = deps.pendingActionCache.take(decoded.extra ?? '');
   if (!payload) {
     await interaction.update({
-      content: '❌ This confirmation has expired. Please run the command again.',
-      embeds: [],
+      embeds: [buildSimpleEmbed('❌ This confirmation has expired. Please run the command again.', 'error')],
       components: [],
     });
     return;
@@ -141,10 +147,11 @@ const overrideConfirm: ButtonHandler = async (interaction, decoded, deps) => {
     payload.reason ?? '',
   );
   await interaction.update({
-    content: result.ok
-      ? '⚠️ Payout address overridden. Buyer confirmation is still required before funds move.'
-      : `❌ ${result.error.message}`,
-    embeds: [],
+    embeds: [
+      result.ok
+        ? buildSimpleEmbed('⚠️ Payout address overridden and payout triggered.', 'warning')
+        : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+    ],
     components: [],
   });
 };
@@ -156,7 +163,7 @@ const closeConfirm: ButtonHandler = async (interaction, decoded, deps) => {
     : deps.dealWizardStore.findByDealId(decoded.dealId)?.channelId;
 
   if (!ticketChannelId) {
-    await interaction.update({ content: '❌ Deal no longer exists.', embeds: [], components: [] });
+    await interaction.update({ embeds: [buildSimpleEmbed('❌ Deal no longer exists.', 'error')], components: [] });
     return;
   }
 
@@ -165,7 +172,7 @@ const closeConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   }
 
   const channel = await interaction.client.channels.fetch(ticketChannelId).catch(() => null);
-  await interaction.update({ content: '🗑️ Closing ticket…', embeds: [], components: [] });
+  await interaction.update({ embeds: [buildSimpleEmbed('🗑️ Closing ticket…')], components: [] });
   if (channel?.isTextBased() && 'delete' in channel) {
     await channel.delete(`Closed by ${interaction.user.tag} via /close`).catch(() => undefined);
   }
@@ -178,7 +185,7 @@ const forceReleasePrompt: ButtonHandler = async (interaction, decoded) => {
     dealId: decoded.dealId,
     title: 'Force release request?',
     description:
-      'This starts the release process on the buyer’s behalf. The seller must still submit and confirm a payout address, and the buyer must still give final confirmation before funds move.',
+      'This starts the release process on the buyer’s behalf. The buyer must still give a final confirmation before the seller may submit a payout address, and the seller must still confirm it before any funds move.',
     highRisk: true,
   });
 };
@@ -186,10 +193,11 @@ const forceReleasePrompt: ButtonHandler = async (interaction, decoded) => {
 const forceReleaseConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   const result = await deps.requestRelease.execute(asDealId(decoded.dealId), interaction.user.id, 'ADMIN');
   await interaction.update({
-    content: result.ok
-      ? '✅ Release forced. Waiting on seller payout address.'
-      : `❌ ${result.error.message}`,
-    embeds: [],
+    embeds: [
+      result.ok
+        ? buildSimpleEmbed('✅ Release forced. Waiting on buyer’s final confirmation.', 'success')
+        : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+    ],
     components: [],
   });
 };

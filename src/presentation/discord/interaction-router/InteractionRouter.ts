@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import type { AppDependencies } from '../AppDependencies.js';
 import { decodeCustomId } from './CustomId.js';
 import type { HandlerRegistry } from './HandlerRegistry.js';
+import { buildSimpleEmbed } from '../embeds/SimpleEmbed.js';
 
 /** The single interactionCreate dispatcher — routes every command/button/modal to its registered handler. */
 export function registerInteractionRouter(
@@ -52,7 +53,12 @@ export function registerInteractionRouter(
       if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
         await interaction
           .reply({
-            content: 'Something went wrong handling that action. Please try again or contact an admin.',
+            embeds: [
+              buildSimpleEmbed(
+                'Something went wrong handling that action. Please try again or contact an admin.',
+                'error',
+              ),
+            ],
             flags: MessageFlags.Ephemeral,
           })
           .catch(() => undefined);

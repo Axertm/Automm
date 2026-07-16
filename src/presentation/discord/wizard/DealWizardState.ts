@@ -22,6 +22,8 @@ export interface DealWizardState {
   currency: Currency | null;
   currencyConfirmed: boolean;
 
+  /** The buyer's raw USD entry, e.g. "100" — kept alongside amountDecimal purely for display in later steps (the deal itself is still denominated in the coin, see amountDecimal). */
+  usdAmountDecimal: string | null;
   amountDecimal: string | null;
   amountConfirmed: boolean;
 
@@ -48,6 +50,7 @@ export function createInitialWizardState(params: {
     sellerRoleConfirmed: false,
     currency: null,
     currencyConfirmed: false,
+    usdAmountDecimal: null,
     amountDecimal: null,
     amountConfirmed: false,
     buyerFinalConfirmed: false,

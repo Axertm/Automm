@@ -9,6 +9,7 @@ import {
   type ModalSubmitInteraction,
 } from 'discord.js';
 import { encodeCancel, encodeConfirm } from '../../interaction-router/CustomId.js';
+import { buildSimpleEmbed } from '../../embeds/SimpleEmbed.js';
 
 export interface ConfirmationPromptOptions {
   namespace: string;
@@ -53,5 +54,8 @@ export async function sendConfirmationPrompt(
 }
 
 export async function handleCancel(interaction: ButtonInteraction): Promise<void> {
-  await interaction.update({ content: 'Cancelled — no changes were made.', embeds: [], components: [] });
+  await interaction.update({
+    embeds: [buildSimpleEmbed('Cancelled — no changes were made.')],
+    components: [],
+  });
 }

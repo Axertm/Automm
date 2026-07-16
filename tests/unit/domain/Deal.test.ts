@@ -55,8 +55,8 @@ function fundedDeal(): Deal {
 function awaitingPayoutConfirmationDeal(): Deal {
   const deal = fundedDeal();
   deal.requestRelease(BUYER, 'BUYER');
+  deal.confirmReleaseByBuyer(BUYER);
   deal.submitPayoutAddress(SELLER, 'ltc1qvee0vzxmw43yer44jse3u0qkylkftk7w5x8esm');
-  deal.confirmPayoutAddressBySeller(SELLER);
   return deal;
 }
 
@@ -99,22 +99,47 @@ describe('Deal', () => {
     expect(() => deal.submitPayoutAddress(BUYER, 'addr')).toThrow(UnauthorizedActorError);
   });
 
+  it('rejects the seller submitting a payout address before the buyer confirms release', () => {
+    const deal = fundedDeal();
+    deal.requestRelease(BUYER, 'BUYER');
+    expect(() => deal.submitPayoutAddress(SELLER, 'addr')).toThrow(InvalidTransitionError);
+  });
+
+  it('rejects the seller confirming release on the buyer’s behalf', () => {
+    const deal = fundedDeal();
+    deal.requestRelease(BUYER, 'BUYER');
+    expect(() => deal.confirmReleaseByBuyer(SELLER)).toThrow(UnauthorizedActorError);
+  });
+
+  it('lets the seller resubmit a payout address to correct a mistake before their own final confirmation', () => {
+    const deal = awaitingPayoutConfirmationDeal();
+    deal.submitPayoutAddress(SELLER, 'ltc1qcorrectedaddress0000000000000000');
+    expect(deal.payoutAddress).toBe('ltc1qcorrectedaddress0000000000000000');
+    expect(deal.payoutAddressConfirmedBySeller).toBe(false);
+    expect(deal.state).toBe('AWAITING_PAYOUT_CONFIRMATION');
+  });
+
   it('requires both seller address confirmation and buyer release confirmation before payout starts', () => {
     const deal = awaitingPayoutConfirmationDeal();
     expect(() => deal.startPayout()).toThrow(PayoutConfirmationIncompleteError);
-    deal.confirmReleaseByBuyer(BUYER);
+    deal.confirmPayoutAddressBySeller(SELLER);
     expect(() => deal.startPayout()).not.toThrow();
     expect(deal.state).toBe('PAYOUT_IN_PROGRESS');
   });
 
-  it('rejects the seller confirming release (only the buyer may)', () => {
+  it('rejects the buyer confirming release a second time (only the seller confirms from here)', () => {
     const deal = awaitingPayoutConfirmationDeal();
-    expect(() => deal.confirmReleaseByBuyer(SELLER)).toThrow(UnauthorizedActorError);
+    expect(() => deal.confirmReleaseByBuyer(BUYER)).toThrow(InvalidTransitionError);
+  });
+
+  it('rejects the buyer confirming the payout address (only the seller may)', () => {
+    const deal = awaitingPayoutConfirmationDeal();
+    expect(() => deal.confirmPayoutAddressBySeller(BUYER)).toThrow(UnauthorizedActorError);
   });
 
   it('completes only once both fee and payout transactions are recorded', () => {
     const deal = awaitingPayoutConfirmationDeal();
-    deal.confirmReleaseByBuyer(BUYER);
+    deal.confirmPayoutAddressBySeller(SELLER);
     deal.startPayout();
     expect(() => deal.markCompleted()).toThrow(PayoutConfirmationIncompleteError);
     deal.recordPayoutFeeTx('fee-tx');
@@ -137,7 +162,7 @@ describe('Deal', () => {
 
     it('refuses to freeze a deal already in PAYOUT_IN_PROGRESS', () => {
       const deal = awaitingPayoutConfirmationDeal();
-      deal.confirmReleaseByBuyer(BUYER);
+      deal.confirmPayoutAddressBySeller(SELLER);
       deal.startPayout();
       expect(() => deal.freeze(ADMIN, 'reason')).toThrow(InvalidTransitionError);
     });
@@ -177,9 +202,8 @@ describe('Deal', () => {
   });
 
   describe('admin override of payout address', () => {
-    it('substitutes for seller confirmation but still requires buyer confirmation before payout', () => {
+    it('bypasses BOTH the seller and buyer confirmations, straight from FUNDED', () => {
       const deal = fundedDeal();
-      deal.requestRelease(BUYER, 'BUYER');
       deal.overridePayoutAddressByAdmin(
         ADMIN,
         'ltc1qoverrideaddress000000000000000000',
@@ -187,19 +211,52 @@ describe('Deal', () => {
       );
       expect(deal.state).toBe('AWAITING_PAYOUT_CONFIRMATION');
       expect(deal.payoutAddressConfirmedBySeller).toBe(true);
-      expect(() => deal.startPayout()).toThrow(PayoutConfirmationIncompleteError);
-      deal.confirmReleaseByBuyer(BUYER);
+      expect(deal.buyerReleaseConfirmed).toBe(true);
+      expect(() => deal.startPayout()).not.toThrow();
+      expect(deal.state).toBe('PAYOUT_IN_PROGRESS');
+    });
+
+    it('also works mid-flow, from RELEASE_REQUESTED or AWAITING_PAYOUT_CONFIRMATION', () => {
+      const midFlow = fundedDeal();
+      midFlow.requestRelease(BUYER, 'BUYER');
+      expect(() =>
+        midFlow.overridePayoutAddressByAdmin(ADMIN, 'ltc1qoverrideaddress0000000000000000', 'reason'),
+      ).not.toThrow();
+      expect(midFlow.state).toBe('AWAITING_PAYOUT_CONFIRMATION');
+
+      const afterBuyer = awaitingPayoutConfirmationDeal();
+      expect(() =>
+        afterBuyer.overridePayoutAddressByAdmin(ADMIN, 'ltc1qoverrideaddress0000000000000000', 'reason'),
+      ).not.toThrow();
+      expect(afterBuyer.state).toBe('AWAITING_PAYOUT_CONFIRMATION');
+    });
+
+    it('works on a frozen deal directly, without a separate unfreeze step', () => {
+      const deal = fundedDeal();
+      deal.freeze(ADMIN, 'suspicious activity, investigating');
+      expect(deal.state).toBe('FROZEN');
+      deal.overridePayoutAddressByAdmin(ADMIN, 'ltc1qoverrideaddress0000000000000000', 'resolved');
+      expect(deal.state).toBe('AWAITING_PAYOUT_CONFIRMATION');
+      expect(deal.frozenFromState).toBeNull();
       expect(() => deal.startPayout()).not.toThrow();
     });
 
     it('requires a non-empty reason', () => {
       const deal = fundedDeal();
-      deal.requestRelease(BUYER, 'BUYER');
       expect(() => deal.overridePayoutAddressByAdmin(ADMIN, 'addr', '   ')).toThrow();
     });
 
-    it('rejects override outside RELEASE_REQUESTED/AWAITING_PAYOUT_CONFIRMATION', () => {
-      const deal = fundedDeal();
+    it('rejects override before any funds have arrived', () => {
+      const deal = makeDeal({ state: 'AWAITING_DEPOSIT' });
+      expect(() => deal.overridePayoutAddressByAdmin(ADMIN, 'addr', 'reason')).toThrow(
+        InvalidTransitionError,
+      );
+    });
+
+    it('rejects override after payout has already started', () => {
+      const deal = awaitingPayoutConfirmationDeal();
+      deal.confirmPayoutAddressBySeller(SELLER);
+      deal.startPayout();
       expect(() => deal.overridePayoutAddressByAdmin(ADMIN, 'addr', 'reason')).toThrow(
         InvalidTransitionError,
       );

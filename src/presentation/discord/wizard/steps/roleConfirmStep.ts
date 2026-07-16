@@ -7,6 +7,7 @@ import {
 } from 'discord.js';
 import { encodeCustomId } from '../../interaction-router/CustomId.js';
 import { buildProgressEmbed } from '../progressEmbed.js';
+import { buildSimpleEmbed } from '../../embeds/SimpleEmbed.js';
 import type { DealWizardState } from '../DealWizardState.js';
 import type { AppDependencies } from '../../AppDependencies.js';
 import type { HandlerRegistry } from '../../interaction-router/HandlerRegistry.js';
@@ -44,7 +45,7 @@ async function handleRoleButton(
   const state = deps.dealWizardStore.get(interaction.channelId);
   if (!state) {
     await interaction.reply({
-      content: 'This wizard session has expired. Please create a new ticket.',
+      embeds: [buildSimpleEmbed('This wizard session has expired. Please create a new ticket.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -53,7 +54,7 @@ async function handleRoleButton(
   const expectedId = role === 'buyer' ? state.buyerId : state.sellerId;
   if (interaction.user.id !== expectedId) {
     await interaction.reply({
-      content: `Only the selected ${role} may confirm this.`,
+      embeds: [buildSimpleEmbed(`Only the selected ${role} may confirm this.`, 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;

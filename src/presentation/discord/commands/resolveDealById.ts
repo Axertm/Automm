@@ -3,6 +3,7 @@ import type { Deal } from '../../../domain/entities/Deal.js';
 import { asDealId } from '../../../domain/value-objects/EntityId.js';
 import type { AppDependencies } from '../AppDependencies.js';
 import type { DealWizardState } from '../wizard/DealWizardState.js';
+import { buildSimpleEmbed } from '../embeds/SimpleEmbed.js';
 
 /**
  * Every deal-related admin command takes an explicit `deal_id` option rather
@@ -27,9 +28,14 @@ export async function resolveDealById(
   if (!deal) {
     const wizardSession = deps.dealWizardStore.findByDealId(rawId);
     await interaction.reply({
-      content: wizardSession
-        ? `Deal \`${rawId}\` is still being set up in its ticket (<#${wizardSession.channelId}>) — it isn't finalized yet, so there's nothing to act on. Finish the setup wizard first.`
-        : `No deal found with ID \`${rawId}\`. Double-check the Deal ID and try again.`,
+      embeds: [
+        buildSimpleEmbed(
+          wizardSession
+            ? `Deal \`${rawId}\` is still being set up in its ticket (<#${wizardSession.channelId}>) — it isn't finalized yet, so there's nothing to act on. Finish the setup wizard first.`
+            : `No deal found with ID \`${rawId}\`. Double-check the Deal ID and try again.`,
+          'error',
+        ),
+      ],
       flags: MessageFlags.Ephemeral,
     });
     return null;
@@ -56,7 +62,12 @@ export async function resolveDealOrWizardSession(
   if (wizardSession) return { kind: 'wizard', state: wizardSession };
 
   await interaction.reply({
-    content: `No deal or in-progress ticket found with ID \`${rawId}\`. Double-check the Deal ID and try again.`,
+    embeds: [
+      buildSimpleEmbed(
+        `No deal or in-progress ticket found with ID \`${rawId}\`. Double-check the Deal ID and try again.`,
+        'error',
+      ),
+    ],
     flags: MessageFlags.Ephemeral,
   });
   return null;

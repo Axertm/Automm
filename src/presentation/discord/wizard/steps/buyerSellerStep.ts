@@ -15,6 +15,7 @@ import {
   type DecodedCustomId,
 } from '../../interaction-router/CustomId.js';
 import { buildProgressEmbed } from '../progressEmbed.js';
+import { buildSimpleEmbed } from '../../embeds/SimpleEmbed.js';
 import type { DealWizardState } from '../DealWizardState.js';
 import type { AppDependencies } from '../../AppDependencies.js';
 import type { HandlerRegistry } from '../../interaction-router/HandlerRegistry.js';
@@ -45,7 +46,7 @@ async function handleSelect(
   const state = deps.dealWizardStore.get(interaction.channelId);
   if (!state) {
     await interaction.reply({
-      content: 'This wizard session has expired. Please create a new ticket.',
+      embeds: [buildSimpleEmbed('This wizard session has expired. Please create a new ticket.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -54,14 +55,14 @@ async function handleSelect(
   const selectedId = interaction.values[0]!;
   if (role === 'buyer' && selectedId === state.sellerId) {
     await interaction.reply({
-      content: 'The buyer cannot be the same person as the seller.',
+      embeds: [buildSimpleEmbed('The buyer cannot be the same person as the seller.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
   if (role === 'seller' && selectedId === state.buyerId) {
     await interaction.reply({
-      content: 'The seller cannot be the same person as the buyer.',
+      embeds: [buildSimpleEmbed('The seller cannot be the same person as the buyer.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -99,7 +100,7 @@ async function handleConfirm(
   const selectedId = decoded.extra;
   if (!selectedId) {
     await interaction.reply({
-      content: 'Selection expired — please pick again.',
+      embeds: [buildSimpleEmbed('Selection expired — please pick again.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;

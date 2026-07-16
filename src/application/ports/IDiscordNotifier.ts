@@ -9,6 +9,7 @@ export interface IDiscordNotifier {
   dealFunded(dealId: DealId): Promise<void>;
   depositDetected(dealId: DealId, txid: string, confirmations: number): Promise<void>;
   releaseRequested(dealId: DealId): Promise<void>;
+  releaseConfirmedByBuyer(dealId: DealId): Promise<void>;
   payoutAddressSubmitted(dealId: DealId): Promise<void>;
   payoutConfirmedBySeller(dealId: DealId): Promise<void>;
   payoutCompleted(dealId: DealId): Promise<void>;

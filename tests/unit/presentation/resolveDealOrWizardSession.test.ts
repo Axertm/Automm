@@ -38,9 +38,10 @@ describe('resolveDealById — in-progress wizard awareness', () => {
     const result = await resolveDealById(makeInteraction('799599', replyMock), deps);
 
     expect(result).toBeNull();
-    const replyArg = replyMock.mock.calls[0]?.[0] as { content: string };
-    expect(replyArg.content).toContain('still being set up');
-    expect(replyArg.content).not.toContain('No deal found');
+    const replyArg = replyMock.mock.calls[0]?.[0] as { embeds: [{ data: { description: string } }] };
+    const description = replyArg.embeds[0].data.description;
+    expect(description).toContain('still being set up');
+    expect(description).not.toContain('No deal found');
   });
 
   it('still gives the generic not-found message for an ID matching neither a deal nor a wizard session', async () => {
@@ -51,8 +52,8 @@ describe('resolveDealById — in-progress wizard awareness', () => {
 
     await resolveDealById(makeInteraction('000000', replyMock), deps);
 
-    const replyArg = replyMock.mock.calls[0]?.[0] as { content: string };
-    expect(replyArg.content).toContain('No deal found');
+    const replyArg = replyMock.mock.calls[0]?.[0] as { embeds: [{ data: { description: string } }] };
+    expect(replyArg.embeds[0].data.description).toContain('No deal found');
   });
 });
 

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Transaction } from '../../../domain/entities/Transaction.js';
+import { Money } from '../../../domain/value-objects/Money.js';
 import { asTransactionId, asTxId, type DealId } from '../../../domain/value-objects/EntityId.js';
 import { DealNotFoundError } from '../../../domain/errors/DomainErrors.js';
 import type { IDealRepository } from '../../../domain/repositories/IDealRepository.js';
@@ -57,15 +58,62 @@ export class ExecutePayoutUseCase {
     }
 
     const blockchainService = this.blockchainServiceFactory.getService(deal.currency);
-    const { fee, remainder } = deal.expectedAmount.splitByBasisPoints(deal.feeBasisPointsSnapshot);
+
+    // Split the ACTUAL confirmed deposit total, not the fixed expectedAmount
+    // snapshotted at deal creation. A buyer who overpays (or sends a second,
+    // smaller top-up deposit) pushes the confirmed total above
+    // expectedAmount; splitting on expectedAmount would leave that surplus
+    // behind as unspent change in a wallet nobody ever revisits once the
+    // deal is COMPLETED. Splitting on the real balance means the whole
+    // deposit is always paid out, proportionally, to fee + seller.
+    const deposits = await this.transactionRepository.findByDealId(dealId);
+    const confirmedTotal = deposits
+      .filter((tx) => tx.direction === 'DEPOSIT' && tx.isConfirmed())
+      .reduce((sum, tx) => sum.add(tx.amount), Money.zero(deal.currency));
+    const payoutBasis = confirmedTotal.isGreaterThanOrEqual(deal.expectedAmount)
+      ? confirmedTotal
+      : deal.expectedAmount;
+
+    const { fee, remainder } = payoutBasis.splitByBasisPoints(deal.feeBasisPointsSnapshot);
     const feeWalletAddress = this.feeWalletProvider.getFeeWalletAddress(deal.currency);
+
+    // The wallet only ever holds exactly what was deposited (fee + remainder,
+    // by construction of splitByBasisPoints) — the chain's own broadcast fee
+    // is not part of that pot. Without carving it out of one of the two
+    // outputs first, sendPayout would always fail with an insufficient-
+    // balance error, since it needs fee + remainder + networkFee available.
+    // The escrow's own cut absorbs the network fee first; only if that cut is
+    // smaller than the network cost does the shortfall reduce the seller's
+    // remainder.
+    const networkFee = await blockchainService.estimateFee({
+      fromAddress: wallet.address,
+      outputs: [
+        { address: feeWalletAddress, amount: fee },
+        { address: deal.payoutAddress, amount: remainder },
+      ],
+    });
+    let adjustedFeeUnits = fee.smallestUnits - networkFee.smallestUnits;
+    let adjustedRemainderUnits = remainder.smallestUnits;
+    if (adjustedFeeUnits < 0n) {
+      adjustedRemainderUnits += adjustedFeeUnits;
+      adjustedFeeUnits = 0n;
+    }
+    if (adjustedRemainderUnits < 0n) {
+      return err(
+        new Error(
+          `Cannot execute payout: deposited amount (${payoutBasis.toDecimalString()} ${deal.currency}) is too small to cover the network fee (${networkFee.toDecimalString()} ${deal.currency})`,
+        ),
+      );
+    }
+    const adjustedFee = Money.fromSmallestUnits(deal.currency, adjustedFeeUnits);
+    const adjustedRemainder = Money.fromSmallestUnits(deal.currency, adjustedRemainderUnits);
 
     try {
       const result = await blockchainService.sendPayout({
         fromWallet: { address: wallet.address, encryptedPrivateKey: wallet.encryptedPrivateKey },
         outputs: [
-          { address: feeWalletAddress, amount: fee },
-          { address: deal.payoutAddress, amount: remainder },
+          { address: feeWalletAddress, amount: adjustedFee },
+          { address: deal.payoutAddress, amount: adjustedRemainder },
         ],
       });
 
@@ -82,7 +130,7 @@ export class ExecutePayoutUseCase {
           direction: 'FEE',
           status: 'PENDING',
           currency: deal.currency,
-          amount: fee,
+          amount: adjustedFee,
           confirmations: 0,
           detectedAt: now,
           confirmedAt: null,
@@ -96,7 +144,7 @@ export class ExecutePayoutUseCase {
           direction: 'PAYOUT',
           status: 'PENDING',
           currency: deal.currency,
-          amount: remainder,
+          amount: adjustedRemainder,
           confirmations: 0,
           detectedAt: now,
           confirmedAt: null,
@@ -109,8 +157,9 @@ export class ExecutePayoutUseCase {
         action: 'PAYOUT_BROADCAST',
         metadata: {
           txid: result.txid,
-          feeAmount: fee.toDecimalString(),
-          remainderAmount: remainder.toDecimalString(),
+          feeAmount: adjustedFee.toDecimalString(),
+          remainderAmount: adjustedRemainder.toDecimalString(),
+          networkFee: networkFee.toDecimalString(),
         },
       });
 

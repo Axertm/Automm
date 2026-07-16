@@ -52,6 +52,13 @@ export const envSchema = z.object({
   ESCROW_CATEGORY_ID: z.string().optional().default(''),
 
   DEPOSIT_SCAN_CRON: cronExpression.default('*/2 * * * *'),
+
+  // Directory for the JSON on-disk backup of every non-terminal deal +
+  // wallet — a second, independent copy alongside the primary database, so
+  // a database-level disaster (accidental wipe, corruption) is recoverable
+  // via `npm run restore:backup` instead of unrecoverable. See
+  // src/infrastructure/persistence/backup/JsonBackupStore.ts.
+  BACKUP_DIR: z.string().optional().default('./backups'),
 });
 
 export type Env = z.infer<typeof envSchema>;

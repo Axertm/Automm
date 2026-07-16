@@ -155,31 +155,55 @@ export class Deal {
     this.transitionTo('RELEASE_REQUESTED');
   }
 
+  /**
+   * The buyer's own confirmation that funds should be released — required
+   * before the seller is even allowed to submit a payout address. Moves the
+   * deal into AWAITING_PAYOUT_CONFIRMATION, which now means "the buyer has
+   * committed to releasing; waiting on the seller's payout address."
+   */
+  confirmReleaseByBuyer(actorDiscordId: string): void {
+    this.assertActorIsBuyer(actorDiscordId, 'confirmReleaseByBuyer');
+    if (this.props.state !== 'RELEASE_REQUESTED') {
+      throw new InvalidTransitionError(this.props.state, 'AWAITING_PAYOUT_CONFIRMATION');
+    }
+    this.props.buyerReleaseConfirmed = true;
+    this.transitionTo('AWAITING_PAYOUT_CONFIRMATION');
+  }
+
+  /**
+   * Only reachable once the buyer has already confirmed (state is
+   * AWAITING_PAYOUT_CONFIRMATION) — the seller cannot submit a payout
+   * address before that. Freely re-callable to correct a mistaken address:
+   * it doesn't change state, only resets payoutAddressConfirmedBySeller, so
+   * the seller can resubmit as many times as needed before their own final
+   * confirmation actually starts the payout.
+   */
   submitPayoutAddress(actorDiscordId: string, address: string): void {
     this.assertActorIsSeller(actorDiscordId, 'submitPayoutAddress');
-    if (this.props.state !== 'RELEASE_REQUESTED') {
-      throw new InvalidTransitionError(this.props.state, 'RELEASE_REQUESTED');
+    if (this.props.state !== 'AWAITING_PAYOUT_CONFIRMATION') {
+      throw new InvalidTransitionError(this.props.state, 'AWAITING_PAYOUT_CONFIRMATION');
     }
     this.props.payoutAddress = address;
     this.props.payoutAddressConfirmedBySeller = false;
     this.props.updatedAt = new Date();
   }
 
+  /**
+   * The seller's own final confirmation of their submitted address. Since
+   * this state is only reachable after the buyer already confirmed
+   * (confirmReleaseByBuyer), this is the last thing needed to satisfy
+   * startPayout()'s two-party gate — callers trigger the actual payout
+   * immediately after this succeeds.
+   */
   confirmPayoutAddressBySeller(actorDiscordId: string): void {
     this.assertActorIsSeller(actorDiscordId, 'confirmPayoutAddressBySeller');
+    if (this.props.state !== 'AWAITING_PAYOUT_CONFIRMATION') {
+      throw new InvalidTransitionError(this.props.state, 'AWAITING_PAYOUT_CONFIRMATION');
+    }
     if (!this.props.payoutAddress) {
       throw new PayoutConfirmationIncompleteError('a submitted payout address');
     }
     this.props.payoutAddressConfirmedBySeller = true;
-    this.transitionTo('AWAITING_PAYOUT_CONFIRMATION');
-  }
-
-  confirmReleaseByBuyer(actorDiscordId: string): void {
-    this.assertActorIsBuyer(actorDiscordId, 'confirmReleaseByBuyer');
-    if (this.props.state !== 'AWAITING_PAYOUT_CONFIRMATION') {
-      throw new InvalidTransitionError(this.props.state, 'PAYOUT_IN_PROGRESS');
-    }
-    this.props.buyerReleaseConfirmed = true;
     this.props.updatedAt = new Date();
   }
 
@@ -216,14 +240,24 @@ export class Deal {
   }
 
   /**
-   * The single highest-risk admin action: redirects payout away from the
-   * seller-confirmed address. Admin substitutes for (and thereby
-   * short-circuits) the seller's own address confirmation, but the buyer's
-   * independent release confirmation is deliberately NOT bypassed — the
-   * two-party gate in startPayout() still requires it.
+   * The single highest-risk admin action: unconditionally forces a payout to
+   * an admin-chosen address, bypassing both halves of the normal two-party
+   * gate — neither the seller's own address submission/confirmation nor the
+   * buyer's release confirmation is required. Callable from any state where
+   * funds are already confirmed in escrow and haven't moved yet (FUNDED,
+   * RELEASE_REQUESTED, AWAITING_PAYOUT_CONFIRMATION), or from FROZEN
+   * wrapping one of those — an admin can resolve a dispute without either
+   * party's cooperation and without a separate unfreeze step first. Requires
+   * a mandatory reason and is distinctly audited — this is a break-glass
+   * action, not a routine one.
    */
   overridePayoutAddressByAdmin(adminDiscordId: string, newAddress: string, reason: string): void {
-    if (this.props.state !== 'RELEASE_REQUESTED' && this.props.state !== 'AWAITING_PAYOUT_CONFIRMATION') {
+    const allowedStates: DealState[] = ['FUNDED', 'RELEASE_REQUESTED', 'AWAITING_PAYOUT_CONFIRMATION'];
+    const effectiveState =
+      this.props.state === 'FROZEN' && this.props.frozenFromState
+        ? this.props.frozenFromState
+        : this.props.state;
+    if (!allowedStates.includes(effectiveState)) {
       throw new InvalidTransitionError(this.props.state, 'AWAITING_PAYOUT_CONFIRMATION');
     }
     if (reason.trim().length === 0) {
@@ -231,13 +265,22 @@ export class Deal {
     }
     this.props.payoutAddress = newAddress;
     this.props.payoutAddressConfirmedBySeller = true;
+    this.props.buyerReleaseConfirmed = true;
     this.props.payoutAddressOverriddenByAdmin = true;
     this.props.payoutOverrideReason = reason;
     this.props.payoutOverrideByDiscordId = adminDiscordId;
-    if (this.props.state === 'RELEASE_REQUESTED') {
-      this.transitionTo('AWAITING_PAYOUT_CONFIRMATION');
-    } else {
+    this.props.frozenFromState = null;
+    this.props.frozenReason = null;
+    this.props.frozenByDiscordId = null;
+    // Bypass the strict adjacency check the same way refund() does: this may
+    // be jumping from FROZEN (wrapping a refundable/freezable state) or
+    // straight from FUNDED, neither of which is a single valid edge to
+    // AWAITING_PAYOUT_CONFIRMATION in the transition table.
+    this.props.state = effectiveState;
+    if (effectiveState === 'AWAITING_PAYOUT_CONFIRMATION') {
       this.props.updatedAt = new Date();
+    } else {
+      this.transitionTo('AWAITING_PAYOUT_CONFIRMATION');
     }
   }
 

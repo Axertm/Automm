@@ -11,8 +11,17 @@ const TRANSITIONS: Record<DealState, readonly DealState[]> = {
   CREATED: ['AWAITING_DEPOSIT', 'CANCELLED'],
   AWAITING_DEPOSIT: ['PARTIALLY_FUNDED', 'FUNDED', 'CANCELLED', 'FROZEN'],
   PARTIALLY_FUNDED: ['FUNDED', 'FROZEN', 'REFUNDED'],
-  FUNDED: ['RELEASE_REQUESTED', 'FROZEN', 'REFUNDED'],
+  // The AWAITING_PAYOUT_CONFIRMATION edge here is admin-override-only —
+  // Deal.overridePayoutAddressByAdmin can jump straight from FUNDED,
+  // skipping the request/confirm steps entirely, to force-resolve a dispute.
+  FUNDED: ['RELEASE_REQUESTED', 'AWAITING_PAYOUT_CONFIRMATION', 'FROZEN', 'REFUNDED'],
+  // Buyer's own confirmReleaseByBuyer() is what makes this transition — the
+  // seller isn't allowed to submit a payout address before it happens.
   RELEASE_REQUESTED: ['AWAITING_PAYOUT_CONFIRMATION', 'FROZEN', 'REFUNDED'],
+  // The seller resubmitting/confirming their address, or an admin override,
+  // happen without a state change (the buyer already confirmed to get
+  // here) — the seller's own final confirmation is what then satisfies the
+  // two-party gate and moves straight to PAYOUT_IN_PROGRESS.
   AWAITING_PAYOUT_CONFIRMATION: ['PAYOUT_IN_PROGRESS', 'FROZEN', 'REFUNDED'],
   PAYOUT_IN_PROGRESS: ['COMPLETED'],
   COMPLETED: [],

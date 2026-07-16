@@ -35,9 +35,10 @@ describe('resolveDealById', () => {
 
     expect(result).toBeNull();
     expect(replyMock).toHaveBeenCalledTimes(1);
-    const replyArg = replyMock.mock.calls[0]?.[0] as { content: string };
-    expect(replyArg.content).toContain('999999');
-    expect(replyArg.content.toLowerCase()).toContain('no deal found');
+    const replyArg = replyMock.mock.calls[0]?.[0] as { embeds: [{ data: { description: string } }] };
+    const description = replyArg.embeds[0].data.description;
+    expect(description).toContain('999999');
+    expect(description.toLowerCase()).toContain('no deal found');
   });
 
   it('trims whitespace from the supplied Deal ID', async () => {

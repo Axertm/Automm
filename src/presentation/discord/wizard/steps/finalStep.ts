@@ -11,6 +11,7 @@ import { encodeCustomId } from '../../interaction-router/CustomId.js';
 import { buildProgressEmbed } from '../progressEmbed.js';
 import { buildDealStatusEmbed } from '../../embeds/DealEmbedBuilder.js';
 import { buildDepositWalletEmbed } from '../../embeds/WalletEmbedBuilder.js';
+import { buildSimpleEmbed } from '../../embeds/SimpleEmbed.js';
 import type { DealWizardState } from '../DealWizardState.js';
 import type { AppDependencies } from '../../AppDependencies.js';
 import type { HandlerRegistry } from '../../interaction-router/HandlerRegistry.js';
@@ -27,7 +28,11 @@ export function buildFinalSummaryMessage(state: DealWizardState, deps: AppDepend
     { name: 'Buyer', value: `<@${state.buyerId}>`, inline: true },
     { name: 'Seller', value: `<@${state.sellerId}>`, inline: true },
     { name: 'Coin', value: state.currency ?? '—', inline: true },
-    { name: 'Amount', value: `${state.amountDecimal} ${state.currency}`, inline: true },
+    {
+      name: 'Amount',
+      value: `$${state.usdAmountDecimal} → ${state.amountDecimal} ${state.currency}`,
+      inline: true,
+    },
     { name: 'Escrow Fee', value: `${(feeBps / 100).toFixed(2)}%`, inline: true },
     {
       name: 'Required Confirmations',
@@ -76,7 +81,7 @@ async function finalizeDeal(
 
   if (!dealResult.ok) {
     await interaction.followUp({
-      content: `Could not finalize the deal: ${dealResult.error.message}`,
+      embeds: [buildSimpleEmbed(`Could not finalize the deal: ${dealResult.error.message}`, 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -85,7 +90,12 @@ async function finalizeDeal(
   const walletResult = await deps.generateDepositWallet.execute(dealResult.value.id);
   if (!walletResult.ok) {
     await interaction.followUp({
-      content: `Deal was created but wallet generation failed: ${walletResult.error.message}. An admin will need to investigate.`,
+      embeds: [
+        buildSimpleEmbed(
+          `Deal was created but wallet generation failed: ${walletResult.error.message}. An admin will need to investigate.`,
+          'error',
+        ),
+      ],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -100,16 +110,21 @@ async function finalizeDeal(
   const statusMessage = await channel.send({ embeds: [statusEmbed] });
   await statusMessage.pin().catch(() => undefined);
   await channel.send({ embeds: [walletEmbed], files });
-  await channel.send(
-    '✅ Deal finalized. Deposit monitoring has begun — the wallet above is scanned automatically every 2 minutes.',
-  );
+  await channel.send({
+    embeds: [
+      buildSimpleEmbed(
+        '✅ Deal finalized. Deposit monitoring has begun — the wallet above is scanned automatically every 2 minutes.',
+        'success',
+      ),
+    ],
+  });
 }
 
 async function handleConfirm(interaction: ButtonInteraction, deps: AppDependencies): Promise<void> {
   const state = deps.dealWizardStore.get(interaction.channelId);
   if (!state) {
     await interaction.reply({
-      content: 'This wizard session has expired. Please create a new ticket.',
+      embeds: [buildSimpleEmbed('This wizard session has expired. Please create a new ticket.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -117,7 +132,7 @@ async function handleConfirm(interaction: ButtonInteraction, deps: AppDependenci
 
   if (interaction.user.id !== state.buyerId && interaction.user.id !== state.sellerId) {
     await interaction.reply({
-      content: 'Only the buyer or seller of this deal may confirm it.',
+      embeds: [buildSimpleEmbed('Only the buyer or seller of this deal may confirm it.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -145,7 +160,7 @@ async function handleCancel(interaction: ButtonInteraction, deps: AppDependencie
 
   if (interaction.user.id !== state.buyerId && interaction.user.id !== state.sellerId) {
     await interaction.reply({
-      content: 'Only the buyer or seller of this deal may cancel it.',
+      embeds: [buildSimpleEmbed('Only the buyer or seller of this deal may cancel it.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;

@@ -16,6 +16,7 @@ import {
   type DecodedCustomId,
 } from '../../interaction-router/CustomId.js';
 import { buildProgressEmbed } from '../progressEmbed.js';
+import { buildSimpleEmbed } from '../../embeds/SimpleEmbed.js';
 import type { DealWizardState } from '../DealWizardState.js';
 import type { AppDependencies } from '../../AppDependencies.js';
 import type { HandlerRegistry } from '../../interaction-router/HandlerRegistry.js';
@@ -41,7 +42,7 @@ async function handleSelect(interaction: StringSelectMenuInteraction, deps: AppD
   const state = deps.dealWizardStore.get(interaction.channelId);
   if (!state) {
     await interaction.reply({
-      content: 'This wizard session has expired. Please create a new ticket.',
+      embeds: [buildSimpleEmbed('This wizard session has expired. Please create a new ticket.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -79,7 +80,7 @@ async function handleConfirm(
   const currency = decoded.extra as Currency | null;
   if (!currency || !(CURRENCIES as readonly string[]).includes(currency)) {
     await interaction.reply({
-      content: 'Selection expired — please pick again.',
+      embeds: [buildSimpleEmbed('Selection expired — please pick again.', 'error')],
       flags: MessageFlags.Ephemeral,
     });
     return;

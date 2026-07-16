@@ -16,6 +16,10 @@ export class FakeDiscordNotifier implements IDiscordNotifier {
     this.calls.push({ method: 'releaseRequested', dealId });
   }
 
+  async releaseConfirmedByBuyer(dealId: DealId): Promise<void> {
+    this.calls.push({ method: 'releaseConfirmedByBuyer', dealId });
+  }
+
   async payoutAddressSubmitted(dealId: DealId): Promise<void> {
     this.calls.push({ method: 'payoutAddressSubmitted', dealId });
   }

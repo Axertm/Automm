@@ -45,6 +45,14 @@ export default [
     },
   },
   {
+    // Standalone CLI scripts, not part of the running bot — plain
+    // console output is the whole point, not a logging concern.
+    files: ['scripts/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     files: ['**/*.mjs', '**/*.cjs', '**/*.js'],
     languageOptions: {
       sourceType: 'module',

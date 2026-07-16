@@ -15,6 +15,7 @@ import type { IWalletRepository } from '../../domain/repositories/IWalletReposit
 import type { IPartyRepository } from '../../domain/repositories/IPartyRepository.js';
 import type { IAuditLogRepository } from '../../domain/repositories/IAuditLogRepository.js';
 import type { IBlockchainServiceFactory } from '../../application/ports/IBlockchainServiceFactory.js';
+import type { IPriceProvider } from '../../application/ports/IPriceProvider.js';
 import type { Logger } from 'pino';
 import type { Env } from '../../config/env.schema.js';
 import type { TicketChannelService } from './ticket/TicketChannelService.js';
@@ -36,6 +37,7 @@ export interface AppDependencies {
   partyRepository: IPartyRepository;
   auditLogRepository: IAuditLogRepository;
   blockchainServiceFactory: IBlockchainServiceFactory;
+  priceProvider: IPriceProvider;
   ticketChannelService: TicketChannelService;
   pendingActionCache: PendingActionCache;
   shortDealIdGenerator: ShortDealIdGenerator;

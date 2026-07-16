@@ -1,5 +1,6 @@
 import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from 'discord.js';
 import type { AppDependencies } from '../../AppDependencies.js';
+import { buildSimpleEmbed } from '../../embeds/SimpleEmbed.js';
 
 /**
  * Admin role membership genuinely lives in Discord (who has which role),
@@ -37,7 +38,7 @@ export async function requireAdmin(
 ): Promise<boolean> {
   if (isAdmin(interaction, deps)) return true;
   await interaction.reply({
-    content: 'This command is restricted to escrow admins.',
+    embeds: [buildSimpleEmbed('This command is restricted to escrow admins.', 'error')],
     flags: MessageFlags.Ephemeral,
   });
   return false;

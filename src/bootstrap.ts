@@ -10,6 +10,7 @@ import { AesGcmEncryptionService } from './infrastructure/security/AesGcmEncrypt
 import { EnvFeeWalletProvider } from './infrastructure/config/EnvFeeWalletProvider.js';
 import { SystemClock } from './application/ports/IClock.js';
 import { AuditRecorder } from './application/services/AuditRecorder.js';
+import { PayoutTrigger } from './application/services/PayoutTrigger.js';
 
 import { BlockCypherProvider } from './infrastructure/blockchain/litecoin/providers/BlockCypherProvider.js';
 import { BlockchairProvider } from './infrastructure/blockchain/litecoin/providers/BlockchairProvider.js';
@@ -18,6 +19,10 @@ import { LitecoinService } from './infrastructure/blockchain/litecoin/LitecoinSe
 import { SolanaRpcClient } from './infrastructure/blockchain/solana/SolanaRpcClient.js';
 import { SolanaService } from './infrastructure/blockchain/solana/SolanaService.js';
 import { BlockchainServiceFactory } from './infrastructure/blockchain/BlockchainServiceFactory.js';
+import { CoinGeckoPriceProvider } from './infrastructure/price/CoinGeckoPriceProvider.js';
+import { JsonBackupStore } from './infrastructure/persistence/backup/JsonBackupStore.js';
+import { BackupDealRepository } from './infrastructure/persistence/backup/BackupDealRepository.js';
+import { BackupWalletRepository } from './infrastructure/persistence/backup/BackupWalletRepository.js';
 
 import { CreateDealUseCase } from './application/use-cases/deal/CreateDealUseCase.js';
 import { GenerateDepositWalletUseCase } from './application/use-cases/deal/GenerateDepositWalletUseCase.js';
@@ -54,8 +59,9 @@ export interface App {
 export async function bootstrap(): Promise<App> {
   const prisma = getPrismaClient();
 
-  const dealRepository = new PrismaDealRepository(prisma);
-  const walletRepository = new PrismaWalletRepository(prisma);
+  const backupStore = new JsonBackupStore(env.BACKUP_DIR, logger.child({ component: 'backup' }));
+  const dealRepository = new BackupDealRepository(new PrismaDealRepository(prisma), backupStore);
+  const walletRepository = new BackupWalletRepository(new PrismaWalletRepository(prisma), backupStore);
   const transactionRepository = new PrismaTransactionRepository(prisma);
   const auditLogRepository = new PrismaAuditLogRepository(prisma);
   const partyRepository = new PrismaPartyRepository(prisma);
@@ -87,6 +93,7 @@ export async function bootstrap(): Promise<App> {
   const solService = new SolanaService(solRpcClient, encryptionService, solLogger);
 
   const blockchainServiceFactory = new BlockchainServiceFactory(ltcService, solService);
+  const priceProvider = new CoinGeckoPriceProvider(logger.child({ component: 'price' }));
 
   // discordNotifier needs the live Client, so it's wired in after startDiscordBot();
   // use cases that depend on IDiscordNotifier receive a thin proxy that forwards to
@@ -99,6 +106,8 @@ export async function bootstrap(): Promise<App> {
       realNotifier?.depositDetected(...args) ?? Promise.resolve(),
     releaseRequested: (...args: Parameters<DiscordNotifier['releaseRequested']>) =>
       realNotifier?.releaseRequested(...args) ?? Promise.resolve(),
+    releaseConfirmedByBuyer: (...args: Parameters<DiscordNotifier['releaseConfirmedByBuyer']>) =>
+      realNotifier?.releaseConfirmedByBuyer(...args) ?? Promise.resolve(),
     payoutAddressSubmitted: (...args: Parameters<DiscordNotifier['payoutAddressSubmitted']>) =>
       realNotifier?.payoutAddressSubmitted(...args) ?? Promise.resolve(),
     payoutConfirmedBySeller: (...args: Parameters<DiscordNotifier['payoutConfirmedBySeller']>) =>
@@ -140,7 +149,6 @@ export async function bootstrap(): Promise<App> {
     notifierProxy,
     auditRecorder,
   );
-  const confirmPayoutWallet = new ConfirmPayoutWalletUseCase(dealRepository, notifierProxy, auditRecorder);
   const executePayout = new ExecutePayoutUseCase(
     dealRepository,
     walletRepository,
@@ -151,7 +159,14 @@ export async function bootstrap(): Promise<App> {
     auditRecorder,
     clock,
   );
-  const confirmRelease = new ConfirmReleaseUseCase(dealRepository, executePayout, auditRecorder);
+  const payoutTrigger = new PayoutTrigger(dealRepository, executePayout, auditRecorder);
+  const confirmPayoutWallet = new ConfirmPayoutWalletUseCase(
+    dealRepository,
+    notifierProxy,
+    auditRecorder,
+    payoutTrigger,
+  );
+  const confirmRelease = new ConfirmReleaseUseCase(dealRepository, notifierProxy, auditRecorder);
 
   const adminFreeze = new AdminFreezeUseCase(dealRepository, notifierProxy, auditRecorder);
   const adminUnfreeze = new AdminUnfreezeUseCase(dealRepository, notifierProxy, auditRecorder);
@@ -169,6 +184,7 @@ export async function bootstrap(): Promise<App> {
     blockchainServiceFactory,
     notifierProxy,
     auditRecorder,
+    payoutTrigger,
   );
   const adminStats = new AdminStatsUseCase(dealRepository);
 
@@ -180,6 +196,7 @@ export async function bootstrap(): Promise<App> {
     partyRepository,
     auditLogRepository,
     blockchainServiceFactory,
+    priceProvider,
     ticketChannelService: new TicketChannelService(env),
     pendingActionCache: new PendingActionCache(),
     shortDealIdGenerator: new ShortDealIdGenerator(dealRepository),

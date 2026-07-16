@@ -83,6 +83,15 @@ export class PrismaDealRepository implements IDealRepository {
     });
   }
 
+  async saveIfCurrentStateIs(deal: Deal, expectedState: DealState): Promise<boolean> {
+    const data = toPersistence(deal);
+    const { count } = await this.prisma.deal.updateMany({
+      where: { id: data.id, state: expectedState },
+      data,
+    });
+    return count === 1;
+  }
+
   async findById(id: DealId): Promise<Deal | null> {
     const row = await this.prisma.deal.findUnique({ where: { id } });
     return row ? toDomain(row) : null;

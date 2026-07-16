@@ -6,36 +6,44 @@ import { AuditRecorder } from '../../services/AuditRecorder.js';
 import { err, ok, type Result } from '../../../shared/result/Result.js';
 import type { Deal } from '../../../domain/entities/Deal.js';
 import type { DomainError } from '../../../domain/errors/DomainErrors.js';
+import type { PayoutTrigger } from '../../services/PayoutTrigger.js';
 
-/** The seller's affirmative confirmation that the payout address they submitted is correct. */
+/**
+ * The seller's own affirmative confirmation that the payout address they
+ * submitted is correct. Only reachable once the buyer already confirmed
+ * release (see ConfirmReleaseUseCase), so this is the last piece of the
+ * two-party gate — it immediately triggers the actual payout via
+ * PayoutTrigger rather than waiting for any further buyer action.
+ */
 export class ConfirmPayoutWalletUseCase {
   constructor(
     private readonly dealRepository: IDealRepository,
     private readonly discordNotifier: IDiscordNotifier,
     private readonly auditRecorder: AuditRecorder,
+    private readonly payoutTrigger: PayoutTrigger,
   ) {}
 
-  async execute(dealId: DealId, sellerDiscordId: string): Promise<Result<Deal, DomainError>> {
+  async execute(dealId: DealId, sellerDiscordId: string): Promise<Result<Deal, DomainError | Error>> {
     const deal = await this.dealRepository.findById(dealId);
     if (!deal) {
       return err(new DealNotFoundError(dealId));
     }
 
     try {
-      const fromState = deal.state;
       deal.confirmPayoutAddressBySeller(sellerDiscordId);
-      await this.dealRepository.save(deal);
-      await this.auditRecorder.record({
-        dealId,
-        actorId: sellerDiscordId,
-        action: 'PAYOUT_ADDRESS_CONFIRMED_BY_SELLER',
-        fromState,
-        toState: deal.state,
-      });
-      await this.discordNotifier.payoutConfirmedBySeller(dealId);
-      return ok(deal);
     } catch (error) {
       return err(error as DomainError);
     }
+
+    const result = await this.payoutTrigger.execute(
+      deal,
+      sellerDiscordId,
+      'SELLER_CONFIRMED_PAYOUT_ADDRESS',
+    );
+    if (!result.ok) {
+      return err(result.error);
+    }
+    await this.discordNotifier.payoutConfirmedBySeller(dealId);
+    return ok(result.value);
   }
 }

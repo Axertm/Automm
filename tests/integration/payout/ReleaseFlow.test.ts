@@ -4,6 +4,7 @@ import { SubmitPayoutAddressUseCase } from '../../../src/application/use-cases/r
 import { ConfirmPayoutWalletUseCase } from '../../../src/application/use-cases/release/ConfirmPayoutWalletUseCase.js';
 import { ConfirmReleaseUseCase } from '../../../src/application/use-cases/release/ConfirmReleaseUseCase.js';
 import { ExecutePayoutUseCase } from '../../../src/application/use-cases/release/ExecutePayoutUseCase.js';
+import { PayoutTrigger } from '../../../src/application/services/PayoutTrigger.js';
 import { AuditRecorder } from '../../../src/application/services/AuditRecorder.js';
 import {
   InMemoryDealRepository,
@@ -53,13 +54,13 @@ function buildHarness() {
   const feeWalletProvider = new StubFeeWalletProvider();
 
   const requestRelease = new RequestReleaseUseCase(dealRepository, notifier, auditRecorder);
+  const confirmRelease = new ConfirmReleaseUseCase(dealRepository, notifier, auditRecorder);
   const submitPayoutAddress = new SubmitPayoutAddressUseCase(
     dealRepository,
     factory,
     notifier,
     auditRecorder,
   );
-  const confirmPayoutWallet = new ConfirmPayoutWalletUseCase(dealRepository, notifier, auditRecorder);
   const executePayout = new ExecutePayoutUseCase(
     dealRepository,
     walletRepository,
@@ -70,7 +71,13 @@ function buildHarness() {
     auditRecorder,
     clock,
   );
-  const confirmRelease = new ConfirmReleaseUseCase(dealRepository, executePayout, auditRecorder);
+  const payoutTrigger = new PayoutTrigger(dealRepository, executePayout, auditRecorder);
+  const confirmPayoutWallet = new ConfirmPayoutWalletUseCase(
+    dealRepository,
+    notifier,
+    auditRecorder,
+    payoutTrigger,
+  );
 
   return {
     dealRepository,
@@ -79,9 +86,9 @@ function buildHarness() {
     notifier,
     blockchainService,
     requestRelease,
+    confirmRelease,
     submitPayoutAddress,
     confirmPayoutWallet,
-    confirmRelease,
   };
 }
 
@@ -135,7 +142,7 @@ async function seedFundedDeal(
   return deal;
 }
 
-describe('Release flow (RequestRelease -> SubmitPayoutAddress -> ConfirmPayoutWallet -> ConfirmRelease -> ExecutePayout)', () => {
+describe('Release flow (RequestRelease -> ConfirmRelease [buyer] -> SubmitPayoutAddress -> ConfirmPayoutWallet [seller, triggers payout])', () => {
   it('runs the full happy path and reaches PAYOUT_IN_PROGRESS with a broadcast payout tx', async () => {
     const h = buildHarness();
     const deal = await seedFundedDeal(h.dealRepository, h.walletRepository);
@@ -143,42 +150,47 @@ describe('Release flow (RequestRelease -> SubmitPayoutAddress -> ConfirmPayoutWa
     const requestResult = await h.requestRelease.execute(deal.id, BUYER, 'BUYER');
     expect(requestResult.ok).toBe(true);
 
+    // Buyer confirms FIRST — before the seller is allowed to submit anything.
+    const confirmReleaseResult = await h.confirmRelease.execute(deal.id, BUYER);
+    expect(confirmReleaseResult.ok).toBe(true);
+    if (confirmReleaseResult.ok) {
+      expect(confirmReleaseResult.value.state).toBe('AWAITING_PAYOUT_CONFIRMATION');
+    }
+
     const submitResult = await h.submitPayoutAddress.execute(deal.id, SELLER, SELLER_PAYOUT_ADDRESS);
     expect(submitResult.ok).toBe(true);
 
     const confirmWalletResult = await h.confirmPayoutWallet.execute(deal.id, SELLER);
     expect(confirmWalletResult.ok).toBe(true);
     if (confirmWalletResult.ok) {
-      expect(confirmWalletResult.value.state).toBe('AWAITING_PAYOUT_CONFIRMATION');
-    }
-
-    const confirmReleaseResult = await h.confirmRelease.execute(deal.id, BUYER);
-    expect(confirmReleaseResult.ok).toBe(true);
-    if (confirmReleaseResult.ok) {
-      expect(confirmReleaseResult.value.state).toBe('PAYOUT_IN_PROGRESS');
-      expect(confirmReleaseResult.value.payoutFeeTxId).not.toBeNull();
-      expect(confirmReleaseResult.value.payoutMainTxId).not.toBeNull();
+      expect(confirmWalletResult.value.state).toBe('PAYOUT_IN_PROGRESS');
+      expect(confirmWalletResult.value.payoutFeeTxId).not.toBeNull();
+      expect(confirmWalletResult.value.payoutMainTxId).not.toBeNull();
     }
 
     expect(h.blockchainService.sentPayouts).toHaveLength(1);
     const payout = h.blockchainService.sentPayouts[0]!;
     expect(payout.outputs).toHaveLength(2);
     const [feeOutput, sellerOutput] = payout.outputs;
-    expect(feeOutput!.amount.add(sellerOutput!.amount).toDecimalString()).toBe('1');
+    // The wallet only ever holds the deposited amount (1 LTC) — the chain's
+    // own broadcast fee (0.0001 LTC from FakeBlockchainService.estimateFee)
+    // is carved out of the escrow's own cut before broadcasting, so the two
+    // outputs sum to slightly less than the full deposit.
+    expect(feeOutput!.amount.add(sellerOutput!.amount).toDecimalString()).toBe('0.9999');
+    expect(sellerOutput!.amount.toDecimalString()).toBe('0.975');
 
     const transactions = await h.transactionRepository.findByDealId(deal.id);
     expect(transactions.map((t) => t.direction).sort()).toEqual(['FEE', 'PAYOUT']);
   });
 
-  it('rejects payout execution before both parties confirm (two-party gate)', async () => {
+  it('rejects the seller submitting a payout address before the buyer confirms release', async () => {
     const h = buildHarness();
     const deal = await seedFundedDeal(h.dealRepository, h.walletRepository);
 
     await h.requestRelease.execute(deal.id, BUYER, 'BUYER');
-    await h.submitPayoutAddress.execute(deal.id, SELLER, SELLER_PAYOUT_ADDRESS);
-    // Seller has NOT yet confirmed the address — buyer tries to confirm release early.
-    const earlyConfirm = await h.confirmRelease.execute(deal.id, BUYER);
-    expect(earlyConfirm.ok).toBe(false);
+    // Buyer has NOT confirmed yet — seller tries to submit an address early.
+    const earlySubmit = await h.submitPayoutAddress.execute(deal.id, SELLER, SELLER_PAYOUT_ADDRESS);
+    expect(earlySubmit.ok).toBe(false);
     expect(h.blockchainService.sentPayouts).toHaveLength(0);
   });
 
@@ -193,10 +205,28 @@ describe('Release flow (RequestRelease -> SubmitPayoutAddress -> ConfirmPayoutWa
     const h = buildHarness();
     const deal = await seedFundedDeal(h.dealRepository, h.walletRepository);
     await h.requestRelease.execute(deal.id, BUYER, 'BUYER');
+    await h.confirmRelease.execute(deal.id, BUYER);
 
     h.blockchainService.validateAddress = () => false;
     const result = await h.submitPayoutAddress.execute(deal.id, SELLER, 'not-a-real-address');
     expect(result.ok).toBe(false);
+  });
+
+  it('lets the seller correct a mistaken address by resubmitting before their own final confirmation', async () => {
+    const h = buildHarness();
+    const deal = await seedFundedDeal(h.dealRepository, h.walletRepository);
+    await h.requestRelease.execute(deal.id, BUYER, 'BUYER');
+    await h.confirmRelease.execute(deal.id, BUYER);
+
+    await h.submitPayoutAddress.execute(deal.id, SELLER, 'wrong-address');
+    const resubmit = await h.submitPayoutAddress.execute(deal.id, SELLER, SELLER_PAYOUT_ADDRESS);
+    expect(resubmit.ok).toBe(true);
+    if (resubmit.ok) expect(resubmit.value.payoutAddress).toBe(SELLER_PAYOUT_ADDRESS);
+
+    const confirmWalletResult = await h.confirmPayoutWallet.execute(deal.id, SELLER);
+    expect(confirmWalletResult.ok).toBe(true);
+    expect(h.blockchainService.sentPayouts).toHaveLength(1);
+    expect(h.blockchainService.sentPayouts[0]?.outputs[1]?.address).toBe(SELLER_PAYOUT_ADDRESS);
   });
 
   it('leaves the deal recoverable in PAYOUT_IN_PROGRESS if the broadcast fails', async () => {
@@ -204,11 +234,11 @@ describe('Release flow (RequestRelease -> SubmitPayoutAddress -> ConfirmPayoutWa
     const deal = await seedFundedDeal(h.dealRepository, h.walletRepository);
 
     await h.requestRelease.execute(deal.id, BUYER, 'BUYER');
+    await h.confirmRelease.execute(deal.id, BUYER);
     await h.submitPayoutAddress.execute(deal.id, SELLER, SELLER_PAYOUT_ADDRESS);
-    await h.confirmPayoutWallet.execute(deal.id, SELLER);
 
     h.blockchainService.failNextSend = true;
-    const result = await h.confirmRelease.execute(deal.id, BUYER);
+    const result = await h.confirmPayoutWallet.execute(deal.id, SELLER);
     expect(result.ok).toBe(false);
 
     const persisted = await h.dealRepository.findById(deal.id);

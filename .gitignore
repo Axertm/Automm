@@ -4,7 +4,21 @@ coverage/
 .env
 .env.local
 *.log
+# Prisma resolves DATABASE_URL relative to the schema file's own directory
+# (prisma/), so "file:./prisma/dev.db" actually lands at prisma/prisma/dev.db
+# — ignore both the naive and the real nested path so this never gets
+# accidentally committed again.
 prisma/dev.db
 prisma/dev.db-journal
+prisma/prisma/dev.db
+prisma/prisma/dev.db-journal
+prisma/test.db
+prisma/test.db-journal
+prisma/prisma/test.db
+prisma/prisma/test.db-journal
+# JSON on-disk backup of every active deal + wallet (contains encrypted
+# private keys) — see src/infrastructure/persistence/backup/JsonBackupStore.ts.
+# Never committed; this is meant to live only on the host running the bot.
+backups/
 generated/
 .DS_Store
