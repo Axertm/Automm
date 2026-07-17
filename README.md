@@ -1,8 +1,8 @@
 # Discord Crypto Escrow Bot
 
-A production-ready Discord bot that runs peer-to-peer escrow deals for **Litecoin (LTC)** and **Solana (SOL)**, built with TypeScript, Discord.js v14, Prisma, and Clean Architecture / DDD / dependency-injection patterns. Every dependency is free/open-source; blockchain access uses free-tier APIs (BlockCypher, Blockchair, public Solana RPC) with automatic failover.
+A production-ready Discord bot that runs peer-to-peer escrow deals for **Litecoin (LTC)**, **Solana (SOL)**, and **USDT (Polygon)**, built with TypeScript, Discord.js v14, Prisma, and Clean Architecture / DDD / dependency-injection patterns. Every dependency is free/open-source; blockchain access uses free-tier APIs (Tatum, public Solana RPC, public Polygon RPC) with automatic failover.
 
-> **⚠️ This bot is configured for Litecoin/Solana mainnet by default and custodies real private keys.** It has been built with security as a priority (two-party confirmation gates, defense-in-depth authorization, audit trail) but **has not undergone an independent professional security audit**. Get one before pointing it at real funds at any meaningful scale. Start with small amounts and a small trusted community while you build confidence in the deployment.
+> **⚠️ This bot is configured for Litecoin/Solana/Polygon mainnet by default and custodies real private keys.** It has been built with security as a priority (two-party confirmation gates, defense-in-depth authorization, audit trail) but **has not undergone an independent professional security audit**. Get one before pointing it at real funds at any meaningful scale. Start with small amounts and a small trusted community while you build confidence in the deployment.
 
 ## Prerequisites
 
@@ -20,15 +20,16 @@ Gather these before running the bot:
 - Invite the bot to your server with permission to manage channels, roles, and send messages
 - Copy your server's ID (`DISCORD_GUILD_ID`) — enable Developer Mode, then right-click the server icon → Copy Server ID
 
-**3. Two crypto wallets you control**
+**3. Three crypto wallets you control**
 - An LTC address to receive escrow fees (`LTC_FEE_WALLET_ADDRESS`)
 - A SOL address to receive escrow fees (`SOL_FEE_WALLET_ADDRESS`)
+- A Polygon address to receive escrow fees in USDT (`USDT_FEE_WALLET_ADDRESS`) — same address format as any EVM chain (MetaMask etc.)
 - The bot only ever pays *into* these — it never signs from them
 
-**4. Free API accounts** (both take under a minute, no approval wait)
-- BlockCypher token: https://www.blockcypher.com/dev/ (`BLOCKCYPHER_API_TOKEN`) — technically optional, but the anonymous tier rate-limits fast; get one before relying on the bot for real deals
-- Blockchair API key: https://blockchair.com/api/docs (`BLOCKCHAIR_API_KEY`) — this is the LTC failover provider, so both providers being authenticated matters
+**4. Free API accounts** (takes under a minute, no approval wait)
+- Tatum API key: https://tatum.io (dashboard → API key) (`TATUM_API_KEY`) — required; this is the sole Litecoin chain-data provider (address lookups, UTXOs, fee estimation, broadcast). Free tier is a shared 3 req/s budget
 - Solana works against the public RPC out of the box; a fallback RPC (e.g. Helius's free tier) is optional but recommended
+- Polygon works against the public RPC out of the box; a fallback RPC (e.g. Alchemy/Infura's free tier) is optional but recommended
 
 **5. A database**
 - Nothing to set up for local testing — SQLite is provisioned automatically by `npm run dev`
@@ -40,7 +41,7 @@ Gather these before running the bot:
 npm install
 cp .env.example .env
 # edit .env: DISCORD_TOKEN, DISCORD_CLIENT_ID, DISCORD_GUILD_ID,
-# LTC_FEE_WALLET_ADDRESS, SOL_FEE_WALLET_ADDRESS (see "Environment variables" below)
+# LTC_FEE_WALLET_ADDRESS, SOL_FEE_WALLET_ADDRESS, USDT_FEE_WALLET_ADDRESS (see "Environment variables" below)
 npm run dev
 ```
 
@@ -54,7 +55,7 @@ Deals are no longer created via a slash command with options — everything happ
 
 1. An admin posts the panel once with `/escrow-panel`. Anyone clicks **Create Escrow** on it.
 2. A private ticket channel `escrow-<dealId>` is created immediately (visible to the clicking user + admins + the bot only) with a short, human-friendly 6-digit Deal ID (e.g. `escrow-482913`) — generated before anything else about the deal is known.
-3. Inside the ticket, a guided 5-step wizard runs entirely on buttons/select-menus/modals: **1)** the initiator picks who else is involved (Discord user-select menu, just the other participant — not a role) → confirm/**Wrong Selection**, **2)** both participants each press **I am the Buyer** / **I am the Seller** themselves to claim their own role (only the two participants may press; a role can only be claimed once, and nobody can claim both), **3)** select the currency (LTC/SOL) → confirm/**Wrong Selection**, **4)** enter the amount via modal → shows amount/fee/seller-receives breakdown → confirm/**Wrong Amount** (reopens the modal), **5)** a final summary requiring **both** buyer and seller to independently click **Confirm Deal** (or either can **Cancel Deal**).
+3. Inside the ticket, a guided 5-step wizard runs entirely on buttons/select-menus/modals: **1)** the initiator picks who else is involved (Discord user-select menu, just the other participant — not a role) → confirm/**Wrong Selection**, **2)** both participants each press **I am the Buyer** / **I am the Seller** themselves to claim their own role (only the two participants may press; a role can only be claimed once, and nobody can claim both), **3)** select the currency (LTC/SOL/USDT) → confirm/**Wrong Selection**, **4)** enter the amount via modal → shows amount/fee/seller-receives breakdown → confirm/**Wrong Amount** (reopens the modal), **5)** a final summary requiring **both** buyer and seller to independently click **Confirm Deal** (or either can **Cancel Deal**).
 4. Only after both final confirmations does anything real happen: the Deal is persisted, a brand-new wallet is generated, the QR/deposit-address embed is posted, and the 2-minute deposit scanner picks it up automatically.
 5. Every step's progress is shown as `Step X/5 ✅/⏳/⬜ ...` in the embed. Choosing "wrong" at any step only resets that one step — the rest of the wizard state (already-claimed roles, etc.) is untouched.
 
@@ -85,7 +86,7 @@ src/
 │                       # @solana/web3.js used purely for I/O-free value-object validation.
 ├── application/        # Use cases (one class per business operation), ports (IBlockchainService,
 │                       # IDiscordNotifier, IClock, IFeeWalletProvider), DTOs.
-├── infrastructure/      # Prisma repositories, LitecoinService/SolanaService, Pino logging,
+├── infrastructure/      # Prisma repositories, LitecoinService/SolanaService/UsdtPolygonService, Pino logging,
 │                       # node-cron scheduler, qrcode generator, rate-limit/failover.
 ├── presentation/discord/ # Slash commands, buttons/selects/modals, interaction router, ticket
 │                       # channel service, embeds. Never imports Prisma or a chain SDK directly.
@@ -106,10 +107,11 @@ Off-ramps: `FROZEN` (from any pre-payout state, admin-only, restores the prior s
 
 ### The BlockchainService abstraction
 
-Everything outside `infrastructure/blockchain/**` depends solely on `IBlockchainService` (`src/application/ports/IBlockchainService.ts`). `LitecoinService` and `SolanaService` are the only two implementations — this is what makes the whole use-case layer testable via `tests/fakes/FakeBlockchainService.ts` without ever touching a real chain, and what would let a third currency be added later without touching escrow domain logic.
+Everything outside `infrastructure/blockchain/**` depends solely on `IBlockchainService` (`src/application/ports/IBlockchainService.ts`). `LitecoinService`, `SolanaService`, and `UsdtPolygonService` are the only implementations — this is what makes the whole use-case layer testable via `tests/fakes/FakeBlockchainService.ts` without ever touching a real chain, and what let USDT get added without touching escrow domain logic.
 
-- **Litecoin**: `bitcoinjs-lib` + `bip39`/`bip32` + `tiny-secp256k1`/`ecpair`. Every deposit wallet is derived from a **fresh, independent BIP39 mnemonic generated and immediately discarded** at wallet-creation time — deliberately not from one shared master seed across deals, so compromising one wallet's stored key can never expose any other deal's funds. Chain data comes from `BlockCypherProvider` (primary) with automatic failover to `BlockchairProvider`, both wrapped in `FailoverUtxoProvider`: per-provider rate limiting (token bucket), retry with exponential backoff + jitter, a short TTL cache, and a structured `provider_failover` log on every failover.
+- **Litecoin**: `bitcoinjs-lib` + `bip39`/`bip32` + `tiny-secp256k1`/`ecpair`. Every deposit wallet is derived from a **fresh, independent BIP39 mnemonic generated and immediately discarded** at wallet-creation time — deliberately not from one shared master seed across deals, so compromising one wallet's stored key can never expose any other deal's funds. Chain data comes from `TatumProvider` (via [Tatum](https://tatum.io)'s Litecoin API), wrapped in `FailoverUtxoProvider`: rate limiting (token bucket), retry with exponential backoff + jitter, a short TTL cache, a broadcast that pushes to both of `FailoverUtxoProvider`'s provider slots for redundancy, and a structured `provider_failover` log on every failover.
 - **Solana**: `@solana/web3.js` + `@solana/spl-token`, against the configured `SOLANA_RPC_URL` (default: public mainnet-beta) with an optional `SOLANA_RPC_URL_FALLBACK` (e.g. a free Helius endpoint) through the same retry wrapper.
+- **USDT (Polygon)**: `ethers` v6 against an ERC-20 contract (`USDT_CONTRACT_ADDRESS`, defaults to the real Polygon USDT deployment) over `POLYGON_RPC_URL` (+ optional `POLYGON_RPC_URL_FALLBACK`), same retry wrapper as Solana. Structurally different from LTC/SOL: an ERC-20 transfer needs the wallet to hold native POL to pay gas, and USDT can't pay its own gas. **The buyer sends a small amount of POL alongside their USDT deposit** (the wallet-generation message says so explicitly) — the bot never pre-funds deal wallets itself, keeping every deposit wallet self-contained exactly like LTC/SOL. `estimateFee()` always returns zero USDT (gas is paid from that pre-funded POL, never carved from the escrowed USDT); `sendPayout()` checks the wallet's POL balance before every transfer and fails with a clear, actionable error (recoverable via `/retry-payout` once topped up) if it's short. One other consequence of ERC-20's one-recipient-per-call model: a fee cut and seller remainder to *different* addresses require two separate on-chain transactions (collapsed to one when they coincide, same as LTC) — only the second transaction's hash is recorded against the deal, though both are logged for manual audit (see `UsdtPolygonService.sendPayout`).
 
 ### Security-critical design
 
@@ -135,15 +137,15 @@ SQLite is **dev/CI convenience only, not perfect parity** with Postgres (case-se
 
 See `.env.example` for the full list with descriptions. Nothing sensitive is ever hardcoded — all config is Zod-validated at startup (`src/config/env.schema.ts`) and the process exits with a clear error if anything is missing or malformed.
 
-Required at minimum: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`, `LTC_FEE_WALLET_ADDRESS`, `SOL_FEE_WALLET_ADDRESS`. Everything else (`BLOCKCYPHER_API_TOKEN`, `BLOCKCHAIR_API_KEY`, `SOLANA_RPC_URL_FALLBACK`, `ADMIN_ROLE_IDS`, `BUYER_COMPLETED_ROLE_ID`, `SELLER_COMPLETED_ROLE_ID`, `ESCROW_CATEGORY_ID`) is optional and the bot runs correctly with all of it blank — no code changes or extra manual setup steps are needed beyond filling in `.env`.
+Required at minimum: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`, `TATUM_API_KEY`, `LTC_FEE_WALLET_ADDRESS`, `SOL_FEE_WALLET_ADDRESS`, `USDT_FEE_WALLET_ADDRESS`. Everything else (`SOLANA_RPC_URL_FALLBACK`, `POLYGON_RPC_URL_FALLBACK`, `USDT_CONTRACT_ADDRESS`, `ADMIN_ROLE_IDS`, `BUYER_COMPLETED_ROLE_ID`, `SELLER_COMPLETED_ROLE_ID`, `ESCROW_CATEGORY_ID`) is optional and the bot runs correctly with all of it blank/defaulted — no code changes or extra manual setup steps are needed beyond filling in `.env`.
 
-Note on admin commands specifically: a real Discord **Administrator** on the server can always run `/freeze /unfreeze /release /refund /cancel /override-payout /retry-payout /balance /stats`, regardless of `ADMIN_ROLE_IDS` — you only need to set `ADMIN_ROLE_IDS` if you want to grant admin access to a role _narrower_ than full server Administrator.
+Note on admin commands specifically: a real Discord **Administrator** on the server can always run `/freeze /unfreeze /release /refund /cancel /override-payout /retry-payout /balance /stats /add-deal-backup /remove-deal-backup`, regardless of `ADMIN_ROLE_IDS` — you only need to set `ADMIN_ROLE_IDS` if you want to grant admin access to a role _narrower_ than full server Administrator.
 
 ## Testing
 
 - **Unit**: domain value objects/entities/state machine (exhaustive transition-table coverage, `Money` bigint precision + fee-split rounding correctness, `Address` validation against real generated fixtures), individual blockchain services against stubbed providers (including a real signed-PSBT round trip for Litecoin).
 - **Integration**: use-case flows (deposit scanning across multiple scan cycles, the full release→payout chain, admin actions) against `tests/fakes/` (in-memory repositories + `FakeBlockchainService`) and, for the persistence layer and the deposit scanner, against a real throwaway SQLite database via Prisma.
-- **No test ever hits a real blockchain, real API, or broadcasts a real transaction.** `FakeBlockchainService` is the sole `IBlockchainService` implementation used under test, swappable via the same DI seam that wires in the real `LitecoinService`/`SolanaService` in production.
+- **No test ever hits a real blockchain, real API, or broadcasts a real transaction.** `FakeBlockchainService` is the sole `IBlockchainService` implementation used under test, swappable via the same DI seam that wires in the real `LitecoinService`/`SolanaService`/`UsdtPolygonService` in production.
 - **Supertest**: this bot has no public HTTP API — all user interaction is via the Discord gateway. The one legitimate HTTP surface is a minimal `/healthz` + `/readyz` server for container orchestration liveness/readiness checks (`src/infrastructure/http/healthServer.ts`), and that is the entirety of Supertest's role here (`tests/unit/infrastructure/healthServer.test.ts`) — it was deliberately not stretched further just to use the tool.
 
 ## Deploying
@@ -167,10 +169,20 @@ Every deal-related admin command takes an explicit **`deal_id`** option (the 6-d
 - `/override-payout deal_id:<id>` — **highest-risk action**: redirects payout to an address the seller never confirmed (reason + address required, extra-scrutiny confirmation copy)
 - `/retry-payout deal_id:<id>` — re-attempts broadcasting a payout stuck in `PAYOUT_IN_PROGRESS` (e.g. the original broadcast failed and nothing retries it automatically); safe to retry since a prior successful send leaves the wallet empty, so a duplicate attempt simply fails with an insufficient-balance error instead of double-sending
 - `/deal-info deal_id:<id>` — read-only status embed for a deal, viewable from anywhere
-- `/balance currency:<LTC|SOL> address:<addr>` — read-only, checks the live on-chain balance of any address (not deal-specific — useful for spot-checking a deposit/fee wallet directly against the chain)
+- `/balance currency:<LTC|SOL|USDT> address:<addr>` — read-only, checks the live on-chain balance of any address (not deal-specific — useful for spot-checking a deposit/fee wallet directly against the chain)
 - `/transcript deal_id:<id>` — exports up to the last 500 messages of a deal's ticket channel as a downloadable `.txt` file
 - `/close deal_id:<id>` — deletes a deal's ticket channel (confirmation required; extra warning if the deal isn't yet `COMPLETED`/`REFUNDED`/`CANCELLED`, since closing the channel doesn't change the deal's actual state or move any funds)
 - `/stats` — read-only deal statistics for the whole server, not deal-specific (no confirmation step — moves nothing)
+- `/add-deal-backup deal_id:<id> role:<buyer|seller> user:<@user>` — activates one of that party's own registered backup accounts (see below) so it can act as the buyer/seller on this specific deal; rejected if the user hasn't registered that account themselves first
+- `/remove-deal-backup deal_id:<id> role:<buyer|seller>` — revokes whatever backup account is currently activated for that role on this deal
+
+### Backup accounts
+
+Any user can run `/backup-account add user:<@alt>` to register an alternate Discord account they control (`/backup-account list` / `/backup-account remove` manage the list). Registering one grants it nothing by itself — an admin must separately activate it on a specific deal with `/add-deal-backup`, and only for an account the real party already registered. Once activated, the backup account can request/confirm release or submit/confirm a payout address exactly as if it were the real buyer/seller, for that deal only (see `src/application/services/resolveActingDiscordId.ts`).
+
+### Saved payout addresses
+
+Run `/set-payout-address currency:<LTC|SOL|USDT> address:<your address>` to save a default payout address per currency (omit `address` to view what's currently saved for that currency). This is explicit-only — submitting an address on a deal never silently changes it, since a one-off address for a single deal isn't necessarily meant to become the standing default. Once set, the payout-address step on any deal in that currency offers a one-click "Use Saved Address" shortcut instead of retyping it, with a fallback to enter a different one.
 
 Every command also re-checks the deal's current state via the domain state machine before acting (e.g. `/freeze` on an already-`COMPLETED` deal is rejected by `Deal.freeze()`'s own guard, not just a UI check) — see `src/domain/state-machine/DealStateMachine.ts`.
 
