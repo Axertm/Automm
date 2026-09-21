@@ -32,7 +32,10 @@ export class JsonBackupStore {
   private readonly dealsDir: string;
   private readonly walletsDir: string;
 
-  constructor(baseDir: string, private readonly logger: Logger) {
+  constructor(
+    baseDir: string,
+    private readonly logger: Logger,
+  ) {
     this.dealsDir = path.join(baseDir, 'deals');
     this.walletsDir = path.join(baseDir, 'wallets');
     mkdirSync(this.dealsDir, { recursive: true });
@@ -120,7 +123,10 @@ export class JsonBackupStore {
 function serializeDealProps(props: Readonly<DealProps>) {
   return {
     ...props,
-    expectedAmount: { currency: props.expectedAmount.currency, decimal: props.expectedAmount.toDecimalString() },
+    expectedAmount: {
+      currency: props.expectedAmount.currency,
+      decimal: props.expectedAmount.toDecimalString(),
+    },
   };
 }
 

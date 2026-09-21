@@ -27,7 +27,9 @@ const freezeConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   const result = await deps.adminFreeze.execute(asDealId(decoded.dealId), interaction.user.id, reason);
   await interaction.update({
     embeds: [
-      result.ok ? buildSimpleEmbed('🧊 Deal frozen.', 'warning') : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+      result.ok
+        ? buildSimpleEmbed('🧊 Deal frozen.', 'warning')
+        : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
     ],
     components: [],
   });
@@ -47,7 +49,9 @@ const unfreezeConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   const result = await deps.adminUnfreeze.execute(asDealId(decoded.dealId), interaction.user.id);
   await interaction.update({
     embeds: [
-      result.ok ? buildSimpleEmbed('✅ Deal unfrozen.', 'success') : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+      result.ok
+        ? buildSimpleEmbed('✅ Deal unfrozen.', 'success')
+        : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
     ],
     components: [],
   });
@@ -72,7 +76,9 @@ const cancelConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   const result = await deps.adminCancel.execute(asDealId(decoded.dealId), interaction.user.id, reason);
   await interaction.update({
     embeds: [
-      result.ok ? buildSimpleEmbed('🚫 Deal cancelled.', 'warning') : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+      result.ok
+        ? buildSimpleEmbed('🚫 Deal cancelled.', 'warning')
+        : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
     ],
     components: [],
   });
@@ -111,7 +117,9 @@ const refundConfirm: ButtonHandler = async (interaction, decoded, deps) => {
   );
   await interaction.editReply({
     embeds: [
-      result.ok ? buildSimpleEmbed('✅ Refund broadcast.', 'success') : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
+      result.ok
+        ? buildSimpleEmbed('✅ Refund broadcast.', 'success')
+        : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
     ],
   });
 };
@@ -163,7 +171,10 @@ const closeConfirm: ButtonHandler = async (interaction, decoded, deps) => {
     : deps.dealWizardStore.findByDealId(decoded.dealId)?.channelId;
 
   if (!ticketChannelId) {
-    await interaction.update({ embeds: [buildSimpleEmbed('❌ Deal no longer exists.', 'error')], components: [] });
+    await interaction.update({
+      embeds: [buildSimpleEmbed('❌ Deal no longer exists.', 'error')],
+      components: [],
+    });
     return;
   }
 

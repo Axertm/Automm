@@ -56,7 +56,10 @@ const confirmWalletConfirm: ButtonHandler = async (interaction, decoded, deps) =
   await interaction.editReply({
     embeds: [
       result.ok
-        ? buildSimpleEmbed('✅ Payout broadcast. It will be marked completed once confirmed on-chain.', 'success')
+        ? buildSimpleEmbed(
+            '✅ Payout broadcast. It will be marked completed once confirmed on-chain.',
+            'success',
+          )
         : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
     ],
   });
@@ -79,7 +82,10 @@ const confirmReleaseConfirm: ButtonHandler = async (interaction, decoded, deps) 
   await interaction.update({
     embeds: [
       result.ok
-        ? buildSimpleEmbed('✅ Release confirmed. Waiting for the seller to submit a payout address.', 'success')
+        ? buildSimpleEmbed(
+            '✅ Release confirmed. Waiting for the seller to submit a payout address.',
+            'success',
+          )
         : buildSimpleEmbed(`❌ ${result.error.message}`, 'error'),
     ],
     components: [],

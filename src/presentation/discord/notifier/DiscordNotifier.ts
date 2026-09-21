@@ -99,7 +99,11 @@ export class DiscordNotifier implements IDiscordNotifier {
     await sent.pin().catch(() => undefined);
   }
 
-  private async sendEvent(dealId: DealId, description: string, tone: Parameters<typeof buildSimpleEmbed>[1] = 'info'): Promise<void> {
+  private async sendEvent(
+    dealId: DealId,
+    description: string,
+    tone: Parameters<typeof buildSimpleEmbed>[1] = 'info',
+  ): Promise<void> {
     const channel = await this.getTicketChannel(dealId);
     await channel?.send({ embeds: [buildSimpleEmbed(description, tone)] }).catch(() => undefined);
   }
@@ -108,7 +112,11 @@ export class DiscordNotifier implements IDiscordNotifier {
     // Both "sides" of funding (deposit arriving + confirmation threshold met)
     // just closed — a real milestone, so it gets a fresh pinned message.
     await this.postNewStatusEmbed(dealId);
-    await this.sendEvent(dealId, '✅ Deal is fully funded and confirmed. The buyer may now `/release` when ready.', 'success');
+    await this.sendEvent(
+      dealId,
+      '✅ Deal is fully funded and confirmed. The buyer may now `/release` when ready.',
+      'success',
+    );
   }
 
   async depositDetected(dealId: DealId, txid: string, confirmations: number): Promise<void> {
@@ -125,20 +133,30 @@ export class DiscordNotifier implements IDiscordNotifier {
     // Only the buyer/admin has acted so far — waiting on the buyer's own
     // final confirmation next, so this edits the existing message in place.
     await this.upsertStatusEmbed(dealId);
-    await this.sendEvent(dealId, '🔓 Release requested. Buyer, please give your final confirmation to proceed.');
+    await this.sendEvent(
+      dealId,
+      '🔓 Release requested. Buyer, please give your final confirmation to proceed.',
+    );
   }
 
   async releaseConfirmedByBuyer(dealId: DealId): Promise<void> {
     // Only the buyer's side of the gate is done — still waiting on the
     // seller, so this is still a partial step (edit in place).
     await this.upsertStatusEmbed(dealId);
-    await this.sendEvent(dealId, '✅ Buyer confirmed the release. Seller, please submit your payout address.', 'success');
+    await this.sendEvent(
+      dealId,
+      '✅ Buyer confirmed the release. Seller, please submit your payout address.',
+      'success',
+    );
   }
 
   async payoutAddressSubmitted(dealId: DealId): Promise<void> {
     // The seller has submitted an address but not yet confirmed it — still partial.
     await this.upsertStatusEmbed(dealId);
-    await this.sendEvent(dealId, '📮 Seller submitted a payout address. Please review and confirm it — this is final.');
+    await this.sendEvent(
+      dealId,
+      '📮 Seller submitted a payout address. Please review and confirm it — this is final.',
+    );
   }
 
   async payoutConfirmedBySeller(dealId: DealId): Promise<void> {
@@ -212,7 +230,10 @@ export class DiscordNotifier implements IDiscordNotifier {
   async refundAddressSubmitted(dealId: DealId): Promise<void> {
     // The buyer has submitted an address but not yet confirmed it — still partial.
     await this.upsertStatusEmbed(dealId);
-    await this.sendEvent(dealId, '📮 Buyer submitted a refund address. Please review and confirm it — this is final.');
+    await this.sendEvent(
+      dealId,
+      '📮 Buyer submitted a refund address. Please review and confirm it — this is final.',
+    );
   }
 
   async refundCompleted(dealId: DealId): Promise<void> {

@@ -73,11 +73,7 @@ export class AdminOverridePayoutAddressUseCase {
       metadata: { newAddress, reason },
     });
 
-    const result = await this.payoutTrigger.execute(
-      deal,
-      adminDiscordId,
-      'ADMIN_OVERRIDE_TRIGGERED_PAYOUT',
-    );
+    const result = await this.payoutTrigger.execute(deal, adminDiscordId, 'ADMIN_OVERRIDE_TRIGGERED_PAYOUT');
     if (!result.ok) {
       return err(result.error);
     }

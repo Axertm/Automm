@@ -37,6 +37,9 @@ export const escrowPanelCommand: SlashCommandDefinition = {
     if (interaction.channel?.isSendable()) {
       await interaction.channel.send({ embeds: [embed], components: [row] });
     }
-    await interaction.reply({ embeds: [buildSimpleEmbed('Panel posted.', 'success')], flags: MessageFlags.Ephemeral });
+    await interaction.reply({
+      embeds: [buildSimpleEmbed('Panel posted.', 'success')],
+      flags: MessageFlags.Ephemeral,
+    });
   },
 };

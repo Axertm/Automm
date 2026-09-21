@@ -35,11 +35,7 @@ export class ConfirmPayoutWalletUseCase {
       return err(error as DomainError);
     }
 
-    const result = await this.payoutTrigger.execute(
-      deal,
-      sellerDiscordId,
-      'SELLER_CONFIRMED_PAYOUT_ADDRESS',
-    );
+    const result = await this.payoutTrigger.execute(deal, sellerDiscordId, 'SELLER_CONFIRMED_PAYOUT_ADDRESS');
     if (!result.ok) {
       return err(result.error);
     }

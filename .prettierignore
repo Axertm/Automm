@@ -3,5 +3,6 @@ node_modules
 coverage
 generated
 prisma/migrations
+prisma/schema.sqlite.prisma
 pnpm-lock.yaml
 package-lock.json

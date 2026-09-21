@@ -82,7 +82,10 @@ async function handleModalSubmit(interaction: ModalSubmitInteraction, deps: AppD
   if (!USD_DECIMAL_PATTERN.test(usdRaw) || Number(usdRaw) <= 0) {
     await interaction.reply({
       embeds: [
-        buildSimpleEmbed(`"${usdRaw}" is not a valid USD amount. Enter a number like \`100\` or \`49.99\`.`, 'error'),
+        buildSimpleEmbed(
+          `"${usdRaw}" is not a valid USD amount. Enter a number like \`100\` or \`49.99\`.`,
+          'error',
+        ),
       ],
       flags: MessageFlags.Ephemeral,
     });
@@ -150,13 +153,17 @@ async function handleModalSubmit(interaction: ModalSubmitInteraction, deps: AppD
         inline: true,
       },
     )
-    .setDescription('The coin amount is locked in now, at today’s price — it will not change even if the market price moves before deposit.')
+    .setDescription(
+      'The coin amount is locked in now, at today’s price — it will not change even if the market price moves before deposit.',
+    )
     .setColor(0xf1c40f)
     .setFooter({ text: `Deal ID: ${state.dealId}` });
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(encodeConfirm('wizard', 'enter_amount', state.dealId, `${usdRaw}:${amount.toDecimalString()}`))
+      .setCustomId(
+        encodeConfirm('wizard', 'enter_amount', state.dealId, `${usdRaw}:${amount.toDecimalString()}`),
+      )
       .setLabel('Confirm')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()

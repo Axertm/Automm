@@ -43,8 +43,4 @@ export const FREEZABLE_STATES: readonly DealState[] = [
  * REFUNDED — and so an admin can still force a refund on a deal already in
  * that flow.
  */
-export const REFUNDABLE_STATES: readonly DealState[] = [
-  'PARTIALLY_FUNDED',
-  'FUNDED',
-  'REFUND_REQUESTED',
-];
+export const REFUNDABLE_STATES: readonly DealState[] = ['PARTIALLY_FUNDED', 'FUNDED', 'REFUND_REQUESTED'];

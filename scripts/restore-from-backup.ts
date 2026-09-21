@@ -20,7 +20,9 @@ async function main(): Promise<void> {
   const deals = backupStore.loadAllDeals();
   const wallets = backupStore.loadAllWallets();
 
-  console.log(`Found ${deals.length} backed-up deal(s) and ${wallets.length} backed-up wallet(s) in ${env.BACKUP_DIR}`);
+  console.log(
+    `Found ${deals.length} backed-up deal(s) and ${wallets.length} backed-up wallet(s) in ${env.BACKUP_DIR}`,
+  );
 
   for (const deal of deals) {
     await dealRepository.save(deal);
