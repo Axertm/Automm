@@ -9,15 +9,21 @@ export async function buildDepositWalletEmbed(
   const attachment = new AttachmentBuilder(qrBuffer, { name: 'deposit-qr.png' });
 
   const embed = new EmbedBuilder()
-    .setTitle(`Send ${wallet.currency} to this address`)
-    .setDescription(
-      wallet.currency === 'USDT'
-        ? `\`\`\`${wallet.address}\`\`\`\n⚠️ **Also send a small amount of POL (MATIC)** to this same address — USDT transfers on Polygon need POL to pay network gas, and this wallet has none of its own. Without it, the payout cannot be sent later. A few cents' worth (e.g. 0.5 POL) is more than enough.`
-        : `\`\`\`${wallet.address}\`\`\``,
-    )
+    .setAuthor({ name: `Deposit · ${wallet.currency}` })
+    .setTitle(`📥 Send ${wallet.currency} to this address`)
+    .setDescription(`\`\`\`${wallet.address}\`\`\``)
     .setColor(0xf1c40f)
     .setImage('attachment://deposit-qr.png')
-    .setFooter({ text: 'A brand-new wallet was generated for this deal and will never be reused.' });
+    .setFooter({ text: 'A brand-new wallet was generated for this deal and is never reused.' });
+
+  if (wallet.currency === 'USDT') {
+    embed.addFields({
+      name: '⚠️ Also send a little POL (MATIC)',
+      value:
+        'USDT on Polygon needs POL to pay network gas, and this wallet has none of its own. ' +
+        "Send a few cents' worth (e.g. **0.5 POL**) to the same address, or the payout cannot be sent later.",
+    });
+  }
 
   return { embed, files: [attachment] };
 }
