@@ -9,11 +9,12 @@ export async function buildDepositWalletEmbed(
   const attachment = new AttachmentBuilder(qrBuffer, { name: 'deposit-qr.png' });
 
   const embed = new EmbedBuilder()
-    .setTitle(`Send ${wallet.currency} to this address`)
+    .setAuthor({ name: `Deposit · ${wallet.currency}` })
+    .setTitle(`📥 Send ${wallet.currency} to this address`)
     .setDescription(`\`\`\`${wallet.address}\`\`\``)
     .setColor(0xf1c40f)
     .setImage('attachment://deposit-qr.png')
-    .setFooter({ text: 'A brand-new wallet was generated for this deal and will never be reused.' });
+    .setFooter({ text: 'A brand-new wallet was generated for this deal and is never reused.' });
 
   return { embed, files: [attachment] };
 }
