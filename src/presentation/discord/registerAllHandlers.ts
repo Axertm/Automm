@@ -11,6 +11,7 @@ import { closeCommand } from './commands/admin/close.command.js';
 import { dealInfoCommand } from './commands/admin/deal-info.command.js';
 import { transcriptCommand } from './commands/admin/transcript.command.js';
 import { registerReleaseFlowHandlers } from './components/buttons/releaseFlowHandlers.js';
+import { registerRefundFlowHandlers } from './components/buttons/refundFlowHandlers.js';
 import { registerAdminHandlers } from './components/buttons/adminHandlers.js';
 import { registerWizardHandlers } from './wizard/registerWizardHandlers.js';
 
@@ -34,6 +35,7 @@ export function buildHandlerRegistry(): HandlerRegistry {
   }
 
   registerReleaseFlowHandlers(registry);
+  registerRefundFlowHandlers(registry);
   registerAdminHandlers(registry);
   registerWizardHandlers(registry);
 

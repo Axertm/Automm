@@ -1,5 +1,10 @@
 import type { DealId } from '../../../domain/value-objects/EntityId.js';
-import { DealNotFoundError } from '../../../domain/errors/DomainErrors.js';
+import {
+  DealNotFoundError,
+  InvalidTransitionError,
+  PayoutConfirmationIncompleteError,
+  UnauthorizedActorError,
+} from '../../../domain/errors/DomainErrors.js';
 import type { IDealRepository } from '../../../domain/repositories/IDealRepository.js';
 import type { IWalletRepository } from '../../../domain/repositories/IWalletRepository.js';
 import type { ITransactionRepository } from '../../../domain/repositories/ITransactionRepository.js';
@@ -8,21 +13,18 @@ import type { IDiscordNotifier } from '../../ports/IDiscordNotifier.js';
 import { AuditRecorder } from '../../services/AuditRecorder.js';
 import { broadcastRefund } from '../../services/broadcastRefund.js';
 import { err, type Result } from '../../../shared/result/Result.js';
-import { Deal } from '../../../domain/entities/Deal.js';
+import type { Deal } from '../../../domain/entities/Deal.js';
 import type { DomainError } from '../../../domain/errors/DomainErrors.js';
 import { KeyedMutex } from '../../../shared/concurrency/KeyedMutex.js';
 
 /**
- * Sends the deal's confirmed deposited balance back to a buyer-supplied
- * refund address — no escrow fee is charged on a refund.
- *
- * The money-moving core (fee carve-out, atomic REFUNDED claim, broadcast and
- * revert-on-failure) lives in broadcastRefund, shared with the
- * seller-initiated refund button. This use case adds the admin-facing shell:
- * the per-deal mutex that catches a double-clicked confirmation before any
- * work starts, plus the Discord status refresh.
+ * The buyer's own final, fund-moving confirmation of the refund address they
+ * submitted — the mirror image of ConfirmPayoutWalletUseCase. Only reachable
+ * once the seller requested the refund and the buyer submitted an address, so
+ * this is the last step: it immediately broadcasts the refund back to the
+ * buyer via the shared broadcastRefund core.
  */
-export class AdminRefundUseCase {
+export class ConfirmRefundUseCase {
   constructor(
     private readonly dealRepository: IDealRepository,
     private readonly walletRepository: IWalletRepository,
@@ -33,26 +35,31 @@ export class AdminRefundUseCase {
     private readonly mutex: KeyedMutex = new KeyedMutex(),
   ) {}
 
-  async execute(
-    dealId: DealId,
-    adminDiscordId: string,
-    reason: string,
-    refundAddress: string,
-  ): Promise<Result<Deal, DomainError | Error>> {
-    return this.mutex.runExclusive(dealId, () =>
-      this.executeLocked(dealId, adminDiscordId, reason, refundAddress),
-    );
+  async execute(dealId: DealId, buyerDiscordId: string): Promise<Result<Deal, DomainError | Error>> {
+    return this.mutex.runExclusive(dealId, () => this.executeLocked(dealId, buyerDiscordId));
   }
 
   private async executeLocked(
     dealId: DealId,
-    adminDiscordId: string,
-    reason: string,
-    refundAddress: string,
+    buyerDiscordId: string,
   ): Promise<Result<Deal, DomainError | Error>> {
     const deal = await this.dealRepository.findById(dealId);
     if (!deal) {
       return err(new DealNotFoundError(dealId));
+    }
+
+    // The domain refund() below carries no actor check (it's also the admin
+    // break-glass path), so this is the one place the buyer is authorised for
+    // the fund-moving confirmation — mirror of Deal.confirmPayoutAddressBySeller.
+    if (buyerDiscordId !== deal.buyerDiscordId) {
+      return err(new UnauthorizedActorError('confirmRefund', 'BUYER'));
+    }
+    if (deal.state !== 'REFUND_REQUESTED') {
+      return err(new InvalidTransitionError(deal.state, 'REFUNDED'));
+    }
+    const refundAddress = deal.refundAddress;
+    if (!refundAddress) {
+      return err(new PayoutConfirmationIncompleteError('a submitted refund address'));
     }
 
     return broadcastRefund(
@@ -65,12 +72,12 @@ export class AdminRefundUseCase {
       },
       {
         deal,
-        actorDiscordId: adminDiscordId,
-        reason,
+        actorDiscordId: buyerDiscordId,
+        reason: 'Seller refunded the buyer',
         refundAddress,
-        successAction: 'ADMIN_REFUND',
-        failureAction: 'ADMIN_REFUND_BROADCAST_FAILED',
-        onBroadcast: (id) => this.discordNotifier.dealStateChanged(id),
+        successAction: 'REFUND_COMPLETED',
+        failureAction: 'REFUND_BROADCAST_FAILED',
+        onBroadcast: (id) => this.discordNotifier.refundCompleted(id),
       },
     );
   }

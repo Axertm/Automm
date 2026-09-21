@@ -5,6 +5,7 @@ export const DEAL_STATES = [
   'FUNDED',
   'RELEASE_REQUESTED',
   'AWAITING_PAYOUT_CONFIRMATION',
+  'REFUND_REQUESTED',
   'PAYOUT_IN_PROGRESS',
   'COMPLETED',
   'FROZEN',
@@ -32,7 +33,18 @@ export const FREEZABLE_STATES: readonly DealState[] = [
   'FUNDED',
   'RELEASE_REQUESTED',
   'AWAITING_PAYOUT_CONFIRMATION',
+  'REFUND_REQUESTED',
 ];
 
-/** States a deal may be refunded from (funds have arrived and payout hasn't executed yet). */
-export const REFUNDABLE_STATES: readonly DealState[] = ['PARTIALLY_FUNDED', 'FUNDED'];
+/**
+ * States a deal may be refunded from (funds have arrived and payout hasn't
+ * executed yet). REFUND_REQUESTED is included so the seller-initiated refund
+ * flow (seller requests, buyer submits a refund address) can finalize back to
+ * REFUNDED — and so an admin can still force a refund on a deal already in
+ * that flow.
+ */
+export const REFUNDABLE_STATES: readonly DealState[] = [
+  'PARTIALLY_FUNDED',
+  'FUNDED',
+  'REFUND_REQUESTED',
+];

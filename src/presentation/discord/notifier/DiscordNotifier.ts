@@ -199,6 +199,30 @@ export class DiscordNotifier implements IDiscordNotifier {
     }
   }
 
+  async refundRequested(dealId: DealId): Promise<void> {
+    // Only the seller/admin has acted so far — waiting on the buyer to submit
+    // an address next, so this edits the existing message in place.
+    await this.upsertStatusEmbed(dealId);
+    await this.sendEvent(
+      dealId,
+      '↩️ Seller offered a refund. Buyer, please submit the address to receive your funds back.',
+    );
+  }
+
+  async refundAddressSubmitted(dealId: DealId): Promise<void> {
+    // The buyer has submitted an address but not yet confirmed it — still partial.
+    await this.upsertStatusEmbed(dealId);
+    await this.sendEvent(dealId, '📮 Buyer submitted a refund address. Please review and confirm it — this is final.');
+  }
+
+  async refundCompleted(dealId: DealId): Promise<void> {
+    // Both sides of the refund gate are now satisfied (seller requested, buyer
+    // confirmed the address) and the funds have been broadcast — a full step,
+    // so it gets its own fresh pinned message.
+    await this.postNewStatusEmbed(dealId);
+    await this.sendEvent(dealId, '↩️ Refund sent back to the buyer. This deal is now closed.', 'success');
+  }
+
   async dealStateChanged(dealId: DealId): Promise<void> {
     await this.upsertStatusEmbed(dealId);
   }

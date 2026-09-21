@@ -13,5 +13,8 @@ export interface IDiscordNotifier {
   payoutAddressSubmitted(dealId: DealId): Promise<void>;
   payoutConfirmedBySeller(dealId: DealId): Promise<void>;
   payoutCompleted(dealId: DealId): Promise<void>;
+  refundRequested(dealId: DealId): Promise<void>;
+  refundAddressSubmitted(dealId: DealId): Promise<void>;
+  refundCompleted(dealId: DealId): Promise<void>;
   dealStateChanged(dealId: DealId): Promise<void>;
 }

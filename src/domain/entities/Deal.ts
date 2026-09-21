@@ -106,6 +106,10 @@ export class Deal {
     return this.props.payoutMainTxId;
   }
 
+  get refundAddress(): string | null {
+    return this.props.refundAddress;
+  }
+
   private transitionTo(next: DealState): void {
     assertTransition(this.props.state, next);
     this.props.state = next;
@@ -282,6 +286,40 @@ export class Deal {
     } else {
       this.transitionTo('AWAITING_PAYOUT_CONFIRMATION');
     }
+  }
+
+  // --- Seller-initiated refund flow -----------------------------------------
+
+  /**
+   * The seller (the party who would otherwise receive the payout) offers the
+   * escrowed funds back to the buyer. Mirror image of requestRelease: it only
+   * opens the flow — no funds move yet. The buyer must then submit the address
+   * to receive the refund (submitRefundAddress) and give a final confirmation
+   * before anything is broadcast. ADMIN may also drive this on the seller's
+   * behalf.
+   */
+  requestRefund(actorDiscordId: string, actorRole: DealActorRole): void {
+    if (actorRole === 'SELLER') {
+      this.assertActorIsSeller(actorDiscordId, 'requestRefund');
+    } else if (actorRole !== 'ADMIN') {
+      throw new UnauthorizedActorError('requestRefund', 'SELLER or ADMIN');
+    }
+    this.transitionTo('REFUND_REQUESTED');
+  }
+
+  /**
+   * The buyer's own submission of the address their refund should be sent to
+   * — only reachable once the seller has requested a refund (state is
+   * REFUND_REQUESTED). Freely re-callable to correct a mistaken address before
+   * the final confirmation; it doesn't change state.
+   */
+  submitRefundAddress(actorDiscordId: string, address: string): void {
+    this.assertActorIsBuyer(actorDiscordId, 'submitRefundAddress');
+    if (this.props.state !== 'REFUND_REQUESTED') {
+      throw new InvalidTransitionError(this.props.state, 'REFUND_REQUESTED');
+    }
+    this.props.refundAddress = address;
+    this.props.updatedAt = new Date();
   }
 
   // --- Admin off-ramps -------------------------------------------------------
