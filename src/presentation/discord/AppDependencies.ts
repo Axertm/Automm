@@ -4,6 +4,9 @@ import type { RequestReleaseUseCase } from '../../application/use-cases/release/
 import type { SubmitPayoutAddressUseCase } from '../../application/use-cases/release/SubmitPayoutAddressUseCase.js';
 import type { ConfirmPayoutWalletUseCase } from '../../application/use-cases/release/ConfirmPayoutWalletUseCase.js';
 import type { ConfirmReleaseUseCase } from '../../application/use-cases/release/ConfirmReleaseUseCase.js';
+import type { RequestRefundUseCase } from '../../application/use-cases/refund/RequestRefundUseCase.js';
+import type { SubmitRefundAddressUseCase } from '../../application/use-cases/refund/SubmitRefundAddressUseCase.js';
+import type { ConfirmRefundUseCase } from '../../application/use-cases/refund/ConfirmRefundUseCase.js';
 import type { AdminFreezeUseCase } from '../../application/use-cases/admin/AdminFreezeUseCase.js';
 import type { AdminUnfreezeUseCase } from '../../application/use-cases/admin/AdminUnfreezeUseCase.js';
 import type { AdminRefundUseCase } from '../../application/use-cases/admin/AdminRefundUseCase.js';
@@ -55,6 +58,9 @@ export interface AppDependencies {
   submitPayoutAddress: SubmitPayoutAddressUseCase;
   confirmPayoutWallet: ConfirmPayoutWalletUseCase;
   confirmRelease: ConfirmReleaseUseCase;
+  requestRefund: RequestRefundUseCase;
+  submitRefundAddress: SubmitRefundAddressUseCase;
+  confirmRefund: ConfirmRefundUseCase;
   adminFreeze: AdminFreezeUseCase;
   adminUnfreeze: AdminUnfreezeUseCase;
   adminRefund: AdminRefundUseCase;

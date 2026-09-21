@@ -198,6 +198,54 @@ describe('Deal', () => {
     });
   });
 
+  describe('seller-initiated refund flow', () => {
+    it('lets the seller request a refund on a funded deal', () => {
+      const deal = fundedDeal();
+      deal.requestRefund(SELLER, 'SELLER');
+      expect(deal.state).toBe('REFUND_REQUESTED');
+    });
+
+    it('rejects a refund request from anyone but the seller or an admin', () => {
+      const deal = fundedDeal();
+      expect(() => deal.requestRefund(BUYER, 'BUYER' as never)).toThrow(UnauthorizedActorError);
+    });
+
+    it('allows an admin to force a refund request', () => {
+      const deal = fundedDeal();
+      expect(() => deal.requestRefund(ADMIN, 'ADMIN')).not.toThrow();
+      expect(deal.state).toBe('REFUND_REQUESTED');
+    });
+
+    it('rejects the buyer submitting a refund address before a refund is requested', () => {
+      const deal = fundedDeal();
+      expect(() => deal.submitRefundAddress(BUYER, 'addr')).toThrow(InvalidTransitionError);
+    });
+
+    it('rejects the seller submitting a refund address (only the buyer may)', () => {
+      const deal = fundedDeal();
+      deal.requestRefund(SELLER, 'SELLER');
+      expect(() => deal.submitRefundAddress(SELLER, 'addr')).toThrow(UnauthorizedActorError);
+    });
+
+    it('records the buyer’s refund address without changing state, and is re-callable to correct it', () => {
+      const deal = fundedDeal();
+      deal.requestRefund(SELLER, 'SELLER');
+      deal.submitRefundAddress(BUYER, 'ltc1qwrongaddress');
+      expect(deal.refundAddress).toBe('ltc1qwrongaddress');
+      expect(deal.state).toBe('REFUND_REQUESTED');
+      deal.submitRefundAddress(BUYER, 'ltc1qcorrectedrefundaddress');
+      expect(deal.refundAddress).toBe('ltc1qcorrectedrefundaddress');
+    });
+
+    it('finalizes back to REFUNDED once the buyer confirms the submitted address', () => {
+      const deal = fundedDeal();
+      deal.requestRefund(SELLER, 'SELLER');
+      deal.submitRefundAddress(BUYER, 'ltc1qrefundaddress');
+      deal.refund(BUYER, 'Seller refunded the buyer', 'ltc1qrefundaddress');
+      expect(deal.state).toBe('REFUNDED');
+    });
+  });
+
   describe('cancel', () => {
     it('cancels an unfunded deal', () => {
       const deal = makeDeal();

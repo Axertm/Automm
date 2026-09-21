@@ -37,6 +37,9 @@ import { SubmitPayoutAddressUseCase } from './application/use-cases/release/Subm
 import { ConfirmPayoutWalletUseCase } from './application/use-cases/release/ConfirmPayoutWalletUseCase.js';
 import { ExecutePayoutUseCase } from './application/use-cases/release/ExecutePayoutUseCase.js';
 import { ConfirmReleaseUseCase } from './application/use-cases/release/ConfirmReleaseUseCase.js';
+import { RequestRefundUseCase } from './application/use-cases/refund/RequestRefundUseCase.js';
+import { SubmitRefundAddressUseCase } from './application/use-cases/refund/SubmitRefundAddressUseCase.js';
+import { ConfirmRefundUseCase } from './application/use-cases/refund/ConfirmRefundUseCase.js';
 import { AdminFreezeUseCase } from './application/use-cases/admin/AdminFreezeUseCase.js';
 import { AdminUnfreezeUseCase } from './application/use-cases/admin/AdminUnfreezeUseCase.js';
 import { AdminRefundUseCase } from './application/use-cases/admin/AdminRefundUseCase.js';
@@ -137,6 +140,12 @@ export async function bootstrap(): Promise<App> {
       realNotifier?.payoutConfirmedBySeller(...args) ?? Promise.resolve(),
     payoutCompleted: (...args: Parameters<DiscordNotifier['payoutCompleted']>) =>
       realNotifier?.payoutCompleted(...args) ?? Promise.resolve(),
+    refundRequested: (...args: Parameters<DiscordNotifier['refundRequested']>) =>
+      realNotifier?.refundRequested(...args) ?? Promise.resolve(),
+    refundAddressSubmitted: (...args: Parameters<DiscordNotifier['refundAddressSubmitted']>) =>
+      realNotifier?.refundAddressSubmitted(...args) ?? Promise.resolve(),
+    refundCompleted: (...args: Parameters<DiscordNotifier['refundCompleted']>) =>
+      realNotifier?.refundCompleted(...args) ?? Promise.resolve(),
     dealStateChanged: (...args: Parameters<DiscordNotifier['dealStateChanged']>) =>
       realNotifier?.dealStateChanged(...args) ?? Promise.resolve(),
   };
@@ -214,6 +223,29 @@ export async function bootstrap(): Promise<App> {
     dealBackupRepository,
   );
 
+  const requestRefund = new RequestRefundUseCase(
+    dealRepository,
+    notifierProxy,
+    auditRecorder,
+    dealBackupRepository,
+  );
+  const submitRefundAddress = new SubmitRefundAddressUseCase(
+    dealRepository,
+    blockchainServiceFactory,
+    notifierProxy,
+    auditRecorder,
+    dealBackupRepository,
+  );
+  const confirmRefund = new ConfirmRefundUseCase(
+    dealRepository,
+    walletRepository,
+    transactionRepository,
+    blockchainServiceFactory,
+    notifierProxy,
+    auditRecorder,
+    dealBackupRepository,
+  );
+
   const adminFreeze = new AdminFreezeUseCase(dealRepository, notifierProxy, auditRecorder);
   const adminUnfreeze = new AdminUnfreezeUseCase(dealRepository, notifierProxy, auditRecorder);
   const adminRefund = new AdminRefundUseCase(
@@ -256,6 +288,9 @@ export async function bootstrap(): Promise<App> {
     submitPayoutAddress,
     confirmPayoutWallet,
     confirmRelease,
+    requestRefund,
+    submitRefundAddress,
+    confirmRefund,
     adminFreeze,
     adminUnfreeze,
     adminRefund,

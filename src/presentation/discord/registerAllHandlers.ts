@@ -18,6 +18,7 @@ import { backupAccountCommand } from './commands/backup-account.command.js';
 import { setPayoutAddressCommand } from './commands/set-payout-address.command.js';
 import { featuresCommand } from './commands/features.command.js';
 import { registerReleaseFlowHandlers } from './components/buttons/releaseFlowHandlers.js';
+import { registerRefundFlowHandlers } from './components/buttons/refundFlowHandlers.js';
 import { registerAdminHandlers } from './components/buttons/adminHandlers.js';
 import { registerWizardHandlers } from './wizard/registerWizardHandlers.js';
 
@@ -48,6 +49,7 @@ export function buildHandlerRegistry(): HandlerRegistry {
   }
 
   registerReleaseFlowHandlers(registry);
+  registerRefundFlowHandlers(registry);
   registerAdminHandlers(registry);
   registerWizardHandlers(registry);
 

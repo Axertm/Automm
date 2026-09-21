@@ -16,15 +16,19 @@ const VALID_EDGES: Array<[DealState, DealState]> = [
   ['AWAITING_DEPOSIT', 'CANCELLED'],
   ['PARTIALLY_FUNDED', 'FUNDED'],
   ['FUNDED', 'RELEASE_REQUESTED'],
+  // Seller-initiated refund — see Deal.requestRefund.
+  ['FUNDED', 'REFUND_REQUESTED'],
   // Admin-override-only shortcut — see Deal.overridePayoutAddressByAdmin.
   ['FUNDED', 'AWAITING_PAYOUT_CONFIRMATION'],
   ['RELEASE_REQUESTED', 'AWAITING_PAYOUT_CONFIRMATION'],
   ['AWAITING_PAYOUT_CONFIRMATION', 'PAYOUT_IN_PROGRESS'],
+  ['REFUND_REQUESTED', 'REFUNDED'],
   ['PAYOUT_IN_PROGRESS', 'COMPLETED'],
   ['PARTIALLY_FUNDED', 'FROZEN'],
   ['FUNDED', 'FROZEN'],
   ['RELEASE_REQUESTED', 'FROZEN'],
   ['AWAITING_PAYOUT_CONFIRMATION', 'FROZEN'],
+  ['REFUND_REQUESTED', 'FROZEN'],
   ['PAYOUT_IN_PROGRESS', 'FROZEN'],
   ['PARTIALLY_FUNDED', 'REFUNDED'],
   ['FUNDED', 'REFUNDED'],
@@ -80,6 +84,7 @@ describe('DealStateMachine', () => {
         'FUNDED',
         'RELEASE_REQUESTED',
         'AWAITING_PAYOUT_CONFIRMATION',
+        'REFUND_REQUESTED',
         'PAYOUT_IN_PROGRESS',
       ] as DealState[]) {
         expect(canFreeze(state)).toBe(true);
@@ -97,6 +102,8 @@ describe('DealStateMachine', () => {
     it('permits refund only from funded states', () => {
       expect(canRefund('PARTIALLY_FUNDED')).toBe(true);
       expect(canRefund('FUNDED')).toBe(true);
+      // Seller-initiated refund finalizes from REFUND_REQUESTED back to REFUNDED.
+      expect(canRefund('REFUND_REQUESTED')).toBe(true);
     });
 
     it('forbids refund from unfunded or terminal states', () => {

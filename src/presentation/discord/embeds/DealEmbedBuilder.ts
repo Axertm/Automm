@@ -9,6 +9,7 @@ const STATE_COLOR: Record<string, number> = {
   FUNDED: 0x2ecc71,
   RELEASE_REQUESTED: 0x3498db,
   AWAITING_PAYOUT_CONFIRMATION: 0x3498db,
+  REFUND_REQUESTED: 0xe67e22,
   PAYOUT_IN_PROGRESS: 0x9b59b6,
   COMPLETED: 0x2ecc71,
   FROZEN: 0xe74c3c,
@@ -45,6 +46,12 @@ export function buildDealStatusEmbed(deal: Deal, wallet: Wallet | null): EmbedBu
     embed.addFields({
       name: 'Payout address',
       value: `\`${props.payoutAddress}\`${props.payoutAddressConfirmedBySeller ? ' ✅ confirmed' : ' ⏳ awaiting seller confirmation'}`,
+    });
+  }
+  if (props.refundAddress) {
+    embed.addFields({
+      name: 'Refund address',
+      value: `\`${props.refundAddress}\`${props.state === 'REFUND_REQUESTED' ? ' ⏳ awaiting buyer confirmation' : ''}`,
     });
   }
   if (props.payoutAddressOverriddenByAdmin) {

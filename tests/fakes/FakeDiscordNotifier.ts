@@ -32,6 +32,18 @@ export class FakeDiscordNotifier implements IDiscordNotifier {
     this.calls.push({ method: 'payoutCompleted', dealId });
   }
 
+  async refundRequested(dealId: DealId): Promise<void> {
+    this.calls.push({ method: 'refundRequested', dealId });
+  }
+
+  async refundAddressSubmitted(dealId: DealId): Promise<void> {
+    this.calls.push({ method: 'refundAddressSubmitted', dealId });
+  }
+
+  async refundCompleted(dealId: DealId): Promise<void> {
+    this.calls.push({ method: 'refundCompleted', dealId });
+  }
+
   async dealStateChanged(dealId: DealId): Promise<void> {
     this.calls.push({ method: 'dealStateChanged', dealId });
   }

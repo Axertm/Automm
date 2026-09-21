@@ -7,11 +7,42 @@ export function buildDealActionRow(deal: Deal): ActionRowBuilder<ButtonBuilder> 
   const props = deal.toProps();
 
   if (props.state === 'FUNDED') {
+    // "Release Funds" is the buyer's action; "Refund to Buyer" is the seller's
+    // — the party who would otherwise be paid out offering the money back. Both
+    // are offered here; each use case enforces which party may actually act.
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(encodeCustomId('deal', 'release_request', props.id))
         .setLabel('Release Funds')
         .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(encodeCustomId('deal', 'refund_request', props.id))
+        .setLabel('Refund to Buyer')
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+
+  // The seller has offered a refund — now it's the buyer's turn to submit and
+  // confirm the address they want their funds returned to. Mirror image of the
+  // AWAITING_PAYOUT_CONFIRMATION row below.
+  if (props.state === 'REFUND_REQUESTED') {
+    if (!props.refundAddress) {
+      return new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(encodeCustomId('refund', 'submit_address', props.id))
+          .setLabel('Submit Refund Address')
+          .setStyle(ButtonStyle.Primary),
+      );
+    }
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(encodeCustomId('refund', 'confirm_refund', props.id))
+        .setLabel('Confirm & Send Refund')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(encodeCustomId('refund', 'submit_address', props.id))
+        .setLabel('Change Refund Address')
+        .setStyle(ButtonStyle.Secondary),
     );
   }
 

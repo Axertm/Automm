@@ -14,7 +14,7 @@ const TRANSITIONS: Record<DealState, readonly DealState[]> = {
   // The AWAITING_PAYOUT_CONFIRMATION edge here is admin-override-only —
   // Deal.overridePayoutAddressByAdmin can jump straight from FUNDED,
   // skipping the request/confirm steps entirely, to force-resolve a dispute.
-  FUNDED: ['RELEASE_REQUESTED', 'AWAITING_PAYOUT_CONFIRMATION', 'FROZEN', 'REFUNDED'],
+  FUNDED: ['RELEASE_REQUESTED', 'AWAITING_PAYOUT_CONFIRMATION', 'REFUND_REQUESTED', 'FROZEN', 'REFUNDED'],
   // Buyer's own confirmReleaseByBuyer() is what makes this transition — the
   // seller isn't allowed to submit a payout address before it happens.
   RELEASE_REQUESTED: ['AWAITING_PAYOUT_CONFIRMATION', 'FROZEN', 'REFUNDED'],
@@ -23,6 +23,11 @@ const TRANSITIONS: Record<DealState, readonly DealState[]> = {
   // here) — the seller's own final confirmation is what then satisfies the
   // two-party gate and moves straight to PAYOUT_IN_PROGRESS.
   AWAITING_PAYOUT_CONFIRMATION: ['PAYOUT_IN_PROGRESS', 'FROZEN', 'REFUNDED'],
+  // Seller-initiated refund: the seller (the party who would otherwise be
+  // paid out) offers the money back and the deal waits on the buyer to submit
+  // the address to receive it. REFUNDED is the finalizing edge once the buyer
+  // confirms — see Deal.requestRefund / Deal.submitRefundAddress.
+  REFUND_REQUESTED: ['REFUNDED', 'FROZEN'],
   // FROZEN here is what lets an admin pause a stuck payout (e.g. a failed
   // broadcast that nothing retries automatically) and later unfreeze it back
   // to PAYOUT_IN_PROGRESS to retry — see AdminRetryPayoutUseCase.
